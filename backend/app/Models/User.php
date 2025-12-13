@@ -24,6 +24,8 @@ class User extends Authenticatable
         'password',
         'phone_number',
         'role', // 'admin' atau 'customer'
+        'google_id',
+        'facebook_id', 
     ];
 
     /**

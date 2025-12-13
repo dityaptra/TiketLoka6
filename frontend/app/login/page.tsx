@@ -3,14 +3,33 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import Link from 'next/link';
-import { Loader2, Eye, EyeOff } from 'lucide-react'; // Tambah icon mata
+import { Loader2 } from 'lucide-react'; 
 import Image from 'next/image';
+
+// --- 1. TAMBAHKAN ICON FACEBOOK DI SINI (Gabung dengan GoogleIcon) ---
+const GoogleIcon = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24">
+    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+  </svg>
+);
+
+const FacebookIcon = () => (
+  <svg className="w-5 h-5" viewBox="0 0 24 24">
+    <path
+      d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
+      fill="#1877F2"
+    />
+  </svg>
+);
 
 export default function LoginPage() {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false); // Toggle password
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -18,62 +37,53 @@ export default function LoginPage() {
     e.preventDefault();
     setIsLoading(true);
     setError('');
-
+    // ... logic login biasa ...
     try {
-      const res = await fetch('http://127.0.0.1:8000/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.message || 'Login gagal');
-      }
-
-      login(data.access_token, data.user);
-      
+        const res = await fetch('http://localhost:8000/api/login', { // Pastikan pakai localhost
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Login gagal');
+        login(data.access_token, data.user);
     } catch (err: any) {
-      setError(err.message);
+        setError(err.message);
     } finally {
-      setIsLoading(false);
+        setIsLoading(false);
     }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = 'http://localhost:8000/auth/google';
+  };
+
+  // --- 2. FUNGSI HANDLER FACEBOOK ---
+  const handleFacebookLogin = () => {
+    window.location.href = 'http://localhost:8000/auth/facebook';
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-[#DCDCDC] font-sans">
       
-      {/* 1. NAVBAR HEADER (Mirip Shopee: Logo Kiri, Bantuan Kanan) */}
+      {/* HEADER ... (Biarkan sama) */}
       <header className="bg-white w-full py-4 px-6 md:px-16 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-4">
             <Link href="/">
-                <Image 
-                    src="/images/logonama2.png" // Pastikan logo ini berwarna (bukan putih)
-                    alt="Logo TiketLoka" 
-                    width={140} 
-                    height={40} 
-                    className="object-contain h-8 md:h-10 w-auto" 
-                />
+                <Image src="/images/logonama2.png" alt="Logo" width={140} height={40} className="object-contain h-8 md:h-10 w-auto" />
             </Link>
             <span className="text-xl text-gray-800 hidden md:block">Log In</span>
         </div>
       </header>
 
-      {/* 2. MAIN CONTENT (Split Layout) */}
+      {/* MAIN CONTENT */}
       <div className="flex-1 flex items-center justify-center px-4 md:px-16 py-10">
         <div className="w-full max-w-[1200px] grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
             
-            {/* KOLOM KIRI: Branding (Hanya muncul di Desktop) */}
+            {/* Branding Kiri (Hidden Mobile) */}
             <div className="hidden lg:flex flex-col justify-center items-center text-center text-white space-y-6">
                 <div className="relative w-80 h-80">
-                    {/* Ganti dengan gambar ilustrasi wisata/travel jika ada */}
-                    <Image 
-                       src="/images/logo-login.png" // Logo putih besar atau ilustrasi
-                       alt="TiketLoka Illustration"
-                       fill
-                       className="object-contain drop-shadow-2xl"
-                    />
+                    <Image src="/images/logo-login.png" alt="Ilustrasi" fill className="object-contain drop-shadow-2xl"/>
                 </div>
                 <div>
                     <h2 className="text-3xl text-gray-800 font-bold mb-2">Jelajahi Wisata Impian</h2>
@@ -81,79 +91,62 @@ export default function LoginPage() {
                 </div>
             </div>
 
-            {/* KOLOM KANAN: Form Card (Putih) */}
+            {/* Form Kanan */}
             <div className="w-full max-w-[400px] bg-white rounded-lg shadow-2xl mx-auto lg:ml-auto p-8">
-                
                 <h3 className="text-xl font-medium text-gray-800 mb-6">Log In</h3>
 
                 {error && (
                     <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-600 text-sm rounded flex items-center gap-2">
-                       <div className="w-1 h-4 bg-red-600 rounded-full"></div>
-                       {error}
+                       <div className="w-1 h-4 bg-red-600 rounded-full"></div>{error}
                     </div>
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    
-                    {/* Input Email (Clean Style ala Shopee) */}
+                     {/* ... Input Email & Password (Biarkan sama) ... */}
                     <div className="space-y-1 text-gray-600">
-                        <input 
-                            type="email" 
-                            required
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            className="w-full px-4 py-3 rounded-sm border border-gray-300 focus:border-gray-500 focus:outline-none transition-colors text-sm"
-                            placeholder="Akun Email"
-                        />
+                        <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-4 py-3 rounded-sm border border-gray-300 focus:border-gray-500 focus:outline-none transition-colors text-sm" placeholder="Akun Email" />
                     </div>
-
-                    {/* Input Password */}
                     <div className="space-y-1 text-gray-600 relative">
-                        <input 
-                            type={showPassword ? "text" : "password"}
-                            required
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            className="w-full px-4 py-3 rounded-sm border border-gray-300 focus:border-gray-500 focus:outline-none transition-colors text-sm"
-                            placeholder="Password"
-                        /> 
+                        <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-4 py-3 rounded-sm border border-gray-300 focus:border-gray-500 focus:outline-none transition-colors text-sm" placeholder="Password" /> 
                     </div>
 
-                    {/* Tombol Login (ORANYE) */}
-                    <button 
-                        type="submit" 
-                        disabled={isLoading}
-                        className="w-full bg-[#005eff] hover:bg-[#0B2F5E] text-white font-medium py-3 rounded-sm shadow-sm uppercase tracking-wide text-sm transition-all disabled:opacity-70 mt-2"
-                    >
+                    <button type="submit" disabled={isLoading} className="w-full bg-[#005eff] hover:bg-[#0B2F5E] text-white font-medium py-3 rounded-sm shadow-sm uppercase tracking-wide text-sm transition-all disabled:opacity-70 mt-2">
                         {isLoading ? <Loader2 className="animate-spin w-5 h-5 mx-auto" /> : 'LOG IN'}
                     </button>
-
                 </form>
 
-                {/* Divider ATAU (Visual Saja) */}
+                {/* --- 3. BAGIAN TOMBOL SOSIAL MEDIA --- */}
+                
                 <div className="flex items-center my-6">
                     <div className="flex-1 border-t border-gray-200"></div>
                     <span className="px-3 text-xs text-gray-400 uppercase">ATAU</span>
                     <div className="flex-1 border-t border-gray-200"></div>
                 </div>
 
-                {/* Footer Link */}
+                <div className="space-y-3">
+                    {/* Tombol Google */}
+                    <button type="button" onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 rounded-sm transition-all text-sm">
+                        <GoogleIcon />
+                        Login dengan Google
+                    </button>
+
+                    {/* Tombol Facebook (BARU) */}
+                    <button type="button" onClick={handleFacebookLogin} className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 rounded-sm transition-all text-sm">
+                        <FacebookIcon />
+                        Login dengan Facebook
+                    </button>
+                </div>
+                
+                {/* ------------------------------------- */}
+
                 <div className="mt-8 text-center text-sm">
                     <span className="text-gray-400">Baru di TiketLoka? </span>
-                    <Link href="/register" className="text-[#F57C00] font-medium hover:underline">
-                        Daftar
-                    </Link>
+                    <Link href="/register" className="text-[#F57C00] font-medium hover:underline">Daftar</Link>
                 </div>
-
             </div>
         </div>
       </div>
-
-      {/* 3. FOOTER SIMPLE (Copyright) */}
-      <footer className="w-full bg-white text-center py-6 text-xs text-gray-800 ">
-         &copy; {new Date().getFullYear()} TiketLoka. All rights reserved.
-      </footer>
-
+      <footer className="w-full bg-white text-center py-6 text-xs text-gray-800 ">&copy; {new Date().getFullYear()} TiketLoka. All rights reserved.</footer>
     </div>
   );
 }
