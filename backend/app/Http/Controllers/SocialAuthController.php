@@ -13,7 +13,9 @@ class SocialAuthController extends Controller
     // Parameter $provider akan otomatis terisi 'google' atau 'facebook' dari URL
     public function redirect($provider)
     {
-        return Socialite::driver($provider)->redirect();
+        return Socialite::driver($provider)
+            ->with(['prompt' => 'select_account']) // <--- Tambahkan Baris Ini
+            ->redirect();
     }
 
     // 2. Callback dari Provider
@@ -37,7 +39,7 @@ class SocialAuthController extends Controller
                     'name' => $socialUser->getName(),
                     'email' => $socialUser->getEmail(),
                     'password' => null, // Password kosong
-                    'phone_number' => '-', 
+                    'phone_number' => '-',
                     // Isi ID sesuai provider yang sedang dipakai
                     'google_id' => $provider === 'google' ? $socialUser->getId() : null,
                     'facebook_id' => $provider === 'facebook' ? $socialUser->getId() : null,
@@ -59,7 +61,6 @@ class SocialAuthController extends Controller
             // 4. Redirect ke Frontend Next.js
             // Kita gunakan halaman callback yang SAMA untuk Google maupun Facebook
             return redirect("http://localhost:3000/auth/google/callback?token={$token}&user=" . urlencode($user->name));
-
         } catch (\Exception $e) {
             // Kembalikan ke login page dengan error
             return redirect("http://localhost:3000/login?error=" . urlencode($e->getMessage()));

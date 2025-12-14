@@ -177,7 +177,7 @@ class BookingController extends Controller
     public function adminIndex(Request $request)
     {
         // Eager load details.destination is often useful for admin views
-        $query = Booking::with('user');
+        $query = Booking::with(['user', 'details.destination']);
 
         if ($request->has('status')) {
             $query->where('status', $request->status);
