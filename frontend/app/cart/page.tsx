@@ -3,15 +3,23 @@
 import { useEffect, useState } from 'react';
 import Navbar from '@/components/layout/Navbar';
 import Link from 'next/link';
-import { Trash2, Calendar, MapPin, Loader2, ShoppingCart } from 'lucide-react'; // Tambah icon ShoppingCart
+import { Trash2, Calendar, MapPin, Loader2, ShoppingCart } from 'lucide-react'; 
 import { CartItem } from '@/types';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+// IMPORT CONTEXT CART & NOTIFIKASI
+import { useCartContext } from '@/context/CartContext'; 
+import { useNotification } from '@/context/NotificationContext'; 
+import toast from 'react-hot-toast';
 
 export default function CartPage() {
   const router = useRouter();
-  const { token, isLoading: authLoading } = useAuth(); // Ambil loading status juga
+  const { token, isLoading: authLoading } = useAuth();
   
+  // CONTEXT HOOKS
+  const { refreshCart } = useCartContext(); 
+  const { addNotification } = useNotification(); 
+
   const [carts, setCarts] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -19,17 +27,17 @@ export default function CartPage() {
   const [paymentMethod, setPaymentMethod] = useState('qris');
   const [isCheckingOut, setIsCheckingOut] = useState(false);
 
-  // --- FUNGSI HELPER UNTUK GAMBAR (Sama seperti di Tiket) ---
+  // --- FUNGSI HELPER UNTUK GAMBAR ---
   const getImageUrl = (url: string | null) => {
     if (!url) return 'https://images.unsplash.com/photo-1596423348633-8472df3b006c?auto=format&fit=crop&w=800';
     if (url.startsWith('http')) return url;
     return `http://127.0.0.1:8000/storage/${url}`;
   };
-  // ---------------------------------------------------------
+  // ----------------------------------
 
   // 1. Fetch Data Cart
   useEffect(() => {
-    if (authLoading) return; // Tunggu auth selesai cek
+    if (authLoading) return; 
 
     const fetchCart = async () => {
       if (!token) {
@@ -73,8 +81,11 @@ export default function CartPage() {
       });
       setCarts(carts.filter(item => item.id !== id));
       setSelectedIds(selectedIds.filter(selId => selId !== id));
+      
+      toast.success('Item dihapus');
+      await refreshCart(); // Update badge di navbar
     } catch (error) {
-      alert('Gagal menghapus');
+      toast.error('Gagal menghapus');
     }
   };
 
@@ -90,9 +101,9 @@ export default function CartPage() {
     .filter(item => selectedIds.includes(item.id))
     .reduce((sum, item) => sum + item.total_price, 0);
 
-  // 3. Logic Checkout
+  // 3. Logic Checkout (DIPERBARUI)
   const handleCheckout = async () => {
-    if (selectedIds.length === 0) return alert('Pilih minimal 1 item!');
+    if (selectedIds.length === 0) return toast.error('Pilih minimal 1 item!');
     
     setIsCheckingOut(true);
     try {
@@ -112,12 +123,23 @@ export default function CartPage() {
       const json = await res.json();
 
       if (res.ok) {
-        router.push(`/tickets/${json.booking_code}`);
+        // Notifikasi Sukses
+        addNotification(
+            'transaction',
+            'Menunggu Pembayaran',
+            `Pesanan dengan kode ${json.booking_code} berhasil dibuat. Segera selesaikan pembayaran.`
+        );
+        
+        toast.success("Checkout berhasil!");
+        await refreshCart(); // Refresh badge keranjang (karena item checkout dihapus)
+
+        // --- PENTING: ARAHKAN KE HALAMAN PEMBAYARAN ---
+        router.push(`/payment/${json.booking_code}`);
       } else {
-        alert('Checkout Gagal: ' + json.message);
+        toast.error('Checkout Gagal: ' + json.message);
       }
     } catch (error) {
-      alert('Terjadi kesalahan koneksi');
+      toast.error('Terjadi kesalahan koneksi');
     } finally {
       setIsCheckingOut(false);
     }
@@ -174,10 +196,10 @@ export default function CartPage() {
                     <h3 className="font-bold text-[#0B2F5E] line-clamp-1">{item.destination.name}</h3>
                     <div className="flex flex-col text-xs text-gray-500 mt-2 gap-1.5">
                       <div className="flex items-center gap-1.5 bg-gray-50 w-fit px-2 py-1 rounded-md border border-gray-100">
-                         <Calendar className="w-3 h-3 text-gray-400" /> {item.visit_date}
+                          <Calendar className="w-3 h-3 text-gray-400" /> {item.visit_date}
                       </div>
                       <div className="flex items-center gap-1.5">
-                         <MapPin className="w-3 h-3 text-gray-400" /> {item.quantity} Tiket
+                          <MapPin className="w-3 h-3 text-gray-400" /> {item.quantity} Tiket
                       </div>
                     </div>
                     <p className="text-[#F57C00] font-bold mt-2 text-lg">Rp {item.total_price.toLocaleString('id-ID')}</p>

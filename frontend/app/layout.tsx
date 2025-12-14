@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { CartProvider } from '@/context/CartContext';
+import { NotificationProvider } from '@/context/NotificationContext'; // <--- Import Ini
+import { Toaster } from "react-hot-toast";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -17,13 +20,16 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="id">
-      {/* PERBAIKAN DISINI: Tambahkan class Tailwind */}
-      <body
-        className={`${inter.className} bg-white overflow-x-hidden antialiased min-h-screen`}
-      >
+      <body className={`${inter.className} bg-white overflow-x-hidden antialiased min-h-screen`}>
         <AuthProvider>
-          {/* Tambahkan div wrapper utama agar konten tertata */}
-          <div className="relative w-full">{children}</div>
+          <NotificationProvider> {/* Bungkus di sini */}
+            <CartProvider> 
+                <div className="relative w-full">
+                  {children}
+                  <Toaster />
+                </div>
+            </CartProvider>
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

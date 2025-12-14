@@ -3,13 +3,14 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 
-// Tipe data User sesuai response Backend
+// Tipe data User (Ditambahkan avatar_url agar foto profil muncul)
 interface User {
   id: number;
   name: string;
   email: string;
   role: string;
   phone_number: string;
+  avatar_url?: string; // Tambahan untuk foto profil
 }
 
 interface AuthContextType {
@@ -17,6 +18,7 @@ interface AuthContextType {
   token: string | null;
   login: (token: string, userData: User) => void;
   logout: () => void;
+  updateUser: (userData: Partial<User>) => void; // Fungsi baru untuk update state tanpa login ulang
   isLoading: boolean;
 }
 
@@ -35,7 +37,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (storedToken && storedUser) {
       setToken(storedToken);
-      setUser(JSON.parse(storedUser));
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error("Error parsing user data", e);
+      }
     }
     setIsLoading(false);
   }, []);
@@ -47,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('token', newToken);
     localStorage.setItem('user', JSON.stringify(userData));
     
-    // Redirect sesuai role (Opsional)
+    // Redirect sesuai role
     if (userData.role === 'admin') {
        router.push('/admin/dashboard');
     } else {
@@ -57,9 +63,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Fungsi Logout (Hapus data)
   const logout = async () => {
-    // Optional: Panggil API logout backend jika perlu
     try {
         if(token) {
+            // Panggil API logout backend
             await fetch('http://127.0.0.1:8000/api/logout', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -77,8 +83,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push('/login');
   };
 
+  // --- FUNGSI BARU: Update User (Real-time update untuk Navbar/Settings) ---
+  const updateUser = (userData: Partial<User>) => {
+    if (user) {
+      // Gabungkan data lama dengan data baru
+      const updatedUser = { ...user, ...userData };
+      
+      // Update State
+      setUser(updatedUser);
+      
+      // Update LocalStorage agar persist saat refresh
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, token, login, logout, updateUser, isLoading }}>
       {children}
     </AuthContext.Provider>
   );
