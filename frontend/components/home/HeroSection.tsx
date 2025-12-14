@@ -28,12 +28,6 @@ const HeroSection = () => {
 
       {/* Content Layer */}
       <div className="relative z-10 text-center px-4 max-w-5xl mx-auto -mt-25">
-        
-        {/* Badge */}
-        <div className="inline-flex items-center gap-2 py-2.5 px-5 rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white text-xs font-bold tracking-widest uppercase mb-8 shadow-xl animate-in fade-in slide-in-from-bottom-4 duration-700">
-          <Sparkles size={16} className="text-[#F57C00]" />
-          Jelajahi Indonesia Bersama Kami
-        </div>
 
         {/* Heading */}
         <h1
