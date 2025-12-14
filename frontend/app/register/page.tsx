@@ -2,12 +2,21 @@
 
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useNotification } from "@/context/NotificationContext"; // Import Notifikasi
+import { useNotification } from "@/context/NotificationContext";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
 import Image from "next/image";
+import { 
+  Loader2, 
+  User, 
+  Mail, 
+  Phone, 
+  Lock, 
+  Eye, 
+  EyeOff, 
+  ArrowRight 
+} from "lucide-react";
 
-// ICONS
+// --- COMPONENTS: ICONS ---
 const GoogleIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24">
     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -25,9 +34,10 @@ const FacebookIcon = () => (
 
 export default function RegisterPage() {
   const { login } = useAuth();
-  const { addNotification } = useNotification(); // Hook Notifikasi
+  const { addNotification } = useNotification();
   const [formData, setFormData] = useState({ name: "", email: "", phone_number: "", password: "", password_confirmation: "" });
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false); // State terpisah untuk konfirmasi
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -39,6 +49,14 @@ export default function RegisterPage() {
     e.preventDefault();
     setIsLoading(true);
     setError("");
+    
+    // Validasi sederhana sebelum fetch
+    if (formData.password !== formData.password_confirmation) {
+      setError("Konfirmasi password tidak cocok.");
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch("http://localhost:8000/api/register", {
         method: "POST",
@@ -46,11 +64,9 @@ export default function RegisterPage() {
         body: JSON.stringify(formData),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Gagal");
+      if (!res.ok) throw new Error(data.message || "Gagal melakukan pendaftaran");
       
       login(data.access_token, data.user);
-      
-      // TRIGGER NOTIFIKASI
       addNotification('system', 'Pendaftaran Berhasil', 'Akun Anda telah aktif. Selamat bergabung!');
 
     } catch (err: any) {
@@ -63,66 +79,148 @@ export default function RegisterPage() {
   const handleGoogleLogin = () => { window.location.href = "http://localhost:8000/auth/google"; };
   const handleFacebookLogin = () => { window.location.href = "http://localhost:8000/auth/facebook"; };
 
-  const inputClass = "w-full px-4 py-3 rounded-sm border border-gray-300 focus:border-gray-500 focus:outline-none transition-colors text-sm";
+  // Styling Variables
+  const inputWrapperClass = "relative flex items-center";
+  const iconClass = "absolute left-3 text-gray-400 w-5 h-5";
+  const inputClass = "w-full pl-10 pr-4 py-3 rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:border-[#005eff] focus:ring-2 focus:ring-blue-100 focus:outline-none transition-all text-sm placeholder:text-gray-400";
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#DCDCDC] font-sans">
-      <header className="bg-white w-full py-4 px-6 md:px-16 flex justify-between items-center shadow-sm">
-        <div className="flex items-center gap-4">
-          <Link href="/">
-            <Image src="/images/logonama2.png" alt="Logo" width={140} height={40} className="object-contain h-8 md:h-10 w-auto" />
-          </Link>
-          <span className="text-xl text-gray-800 hidden md:block">Daftar</span>
-        </div>
-      </header>
+    <div className="min-h-screen flex flex-col bg-gray-50 font-sans">
 
-      <div className="flex-1 flex items-center justify-center px-4 md:px-16 py-10">
-        <div className="w-full max-w-[1200px] grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-          <div className="hidden lg:flex flex-col justify-center items-center text-center text-white space-y-6">
-            <div className="relative w-80 h-80">
-              <Image src="/images/logo-login.png" alt="Ilustrasi" fill className="object-contain drop-shadow-2xl" />
+      <div className="flex-1 flex items-center justify-center p-4 md:p-8 pt-20">
+        <div className="w-full max-w-5xl bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.06)] overflow-hidden grid grid-cols-1 lg:grid-cols-2 min-h-[600px]">
+          
+          {/* Kolom Kiri: Ilustrasi & Branding */}
+          <div className="hidden lg:flex flex-col justify-center items-center bg-[#005eff] relative overflow-hidden p-12 text-center">
+            {/* Dekorasi Background */}
+            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#005eff] to-[#0046b0] opacity-100 z-0"></div>
+            <div className="absolute -top-24 -left-24 w-64 h-64 bg-white opacity-10 rounded-full blur-3xl"></div>
+            <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#002a6b] opacity-20 rounded-full blur-3xl"></div>
+            
+            <div className="relative z-10 flex flex-col items-center">
+                <div className="relative w-72 h-72 mb-8 animate-fade-in-up">
+                    <Image src="/images/logo-login.png" alt="Ilustrasi Register" fill className="object-contain drop-shadow-xl" />
+                </div>
+                <h2 className="text-3xl font-bold text-white mb-2 tracking-tight">Bergabunglah Bersama Kami</h2>
+                <p className="text-blue-100 text-sm max-w-xs leading-relaxed">
+                    Dapatkan akses ke ribuan event dan promo menarik hanya dalam satu akun.
+                </p>
             </div>
           </div>
 
-          <div className="w-full max-w-[420px] bg-white rounded-lg shadow-2xl mx-auto lg:ml-auto p-8">
-            <h3 className="text-xl font-medium text-gray-800 mb-6">Daftar Akun Baru</h3>
-            {error && <div className="mb-4 p-3 bg-red-50 text-red-600 text-sm rounded">{error}</div>}
+          {/* Kolom Kanan: Form */}
+          <div className="w-full p-8 md:p-12 lg:p-16 flex flex-col justify-center">
+            <div className="mb-8">
+                <h3 className="text-2xl font-bold text-gray-800">Buat Akun Baru</h3>
+                <p className="text-gray-500 text-sm mt-1">Silakan lengkapi data diri Anda di bawah ini.</p>
+            </div>
+
+            {error && (
+                <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm rounded-r flex items-center">
+                    <span className="mr-2">⚠️</span> {error}
+                </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1 text-gray-600"><input name="name" type="text" placeholder="Nama Lengkap" required onChange={handleChange} className={inputClass} /></div>
-              <div className="space-y-1 text-gray-600"><input name="phone_number" type="text" placeholder="Nomor Telepon" required onChange={handleChange} className={inputClass} /></div>
-              <div className="space-y-1 text-gray-600"><input name="email" type="email" placeholder="Akun Email" required onChange={handleChange} className={inputClass} /></div>
-              <div className="space-y-1 text-gray-600 relative"><input name="password" type={showPassword ? "text" : "password"} placeholder="Password (Min. 8 Karakter)" required onChange={handleChange} className={inputClass} /></div>
-              <div className="space-y-1 text-gray-600"><input name="password_confirmation" type={showPassword ? "text" : "password"} placeholder="Konfirmasi Password" required onChange={handleChange} className={inputClass} /></div>
+              {/* Nama */}
+              <div className={inputWrapperClass}>
+                <User className={iconClass} />
+                <input name="name" type="text" placeholder="Nama Lengkap" required onChange={handleChange} className={inputClass} />
+              </div>
 
-              <button type="submit" disabled={isLoading} className="w-full bg-[#005eff] hover:bg-[#0B2F5E] text-white font-medium py-3 rounded-sm shadow-sm uppercase tracking-wide text-sm transition-all disabled:opacity-70 mt-4">
-                {isLoading ? <Loader2 className="animate-spin w-5 h-5 mx-auto" /> : "DAFTAR SEKARANG"}
+              {/* Telepon */}
+              <div className={inputWrapperClass}>
+                <Phone className={iconClass} />
+                <input name="phone_number" type="tel" placeholder="Nomor Telepon" required onChange={handleChange} className={inputClass} />
+              </div>
+
+              {/* Email */}
+              <div className={inputWrapperClass}>
+                <Mail className={iconClass} />
+                <input name="email" type="email" placeholder="Alamat Email" required onChange={handleChange} className={inputClass} />
+              </div>
+
+              {/* Password */}
+              <div className={inputWrapperClass}>
+                <Lock className={iconClass} />
+                <input 
+                    name="password" 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder="Password (Min. 8 Karakter)" 
+                    required 
+                    onChange={handleChange} 
+                    className={inputClass} 
+                />
+                <button 
+                    type="button" 
+                    onClick={() => setShowPassword(!showPassword)} 
+                    className="absolute right-3 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                    {showPassword ? <EyeOff className="w-5 h-5"/> : <Eye className="w-5 h-5"/>}
+                </button>
+              </div>
+
+              {/* Confirm Password */}
+              <div className={inputWrapperClass}>
+                <Lock className={iconClass} />
+                <input 
+                    name="password_confirmation" 
+                    type={showConfirmPassword ? "text" : "password"} 
+                    placeholder="Konfirmasi Password" 
+                    required 
+                    onChange={handleChange} 
+                    className={inputClass} 
+                />
+                <button 
+                    type="button" 
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)} 
+                    className="absolute right-3 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                    {showConfirmPassword ? <EyeOff className="w-5 h-5"/> : <Eye className="w-5 h-5"/>}
+                </button>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={isLoading} 
+                className="w-full bg-[#F57C00] hover:bg-[#E65100] text-white font-semibold py-3 rounded-lg transition-all transform disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
+              >
+                {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (
+                    <>
+                        DAFTAR SEKARANG
+                    </>
+                )}
               </button>
             </form>
 
             <div className="flex items-center my-6">
-              <div className="flex-1 border-t border-gray-200"></div>
-              <span className="px-3 text-xs text-gray-400 uppercase">ATAU</span>
-              <div className="flex-1 border-t border-gray-200"></div>
+              <div className="flex-1 h-px bg-gray-200"></div>
+              <span className="px-4 text-xs font-medium text-gray-400 uppercase tracking-wider">Atau daftar dengan</span>
+              <div className="flex-1 h-px bg-gray-200"></div>
             </div>
 
-            <div className="space-y-3">
-              <button type="button" onClick={handleGoogleLogin} className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 rounded-sm transition-all text-sm">
-                <GoogleIcon /> Daftar dengan Google
+            <div className="grid grid-cols-2 gap-4">
+              <button type="button" onClick={handleGoogleLogin} className="flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-2.5 rounded-lg transition-all text-sm shadow-sm hover:shadow">
+                <GoogleIcon /> <span className="hidden sm:inline">Google</span>
               </button>
-              <button type="button" onClick={handleFacebookLogin} className="w-full flex items-center justify-center gap-2 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium py-3 rounded-sm transition-all text-sm">
-                <FacebookIcon /> Daftar dengan Facebook
+              <button type="button" onClick={handleFacebookLogin} className="flex items-center justify-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 font-medium py-2.5 rounded-lg transition-all text-sm shadow-sm hover:shadow">
+                <FacebookIcon /> <span className="hidden sm:inline">Facebook</span>
               </button>
             </div>
 
             <div className="mt-8 text-center text-sm">
-              <span className="text-gray-400">Sudah punya akun? </span>
-              <Link href="/login" className="text-[#F57C00] font-medium hover:underline">Log In</Link>
+              <span className="text-gray-500">Sudah punya akun? </span>
+              <Link href="/login" className="text-[#F57C00] font-semibold hover:text-[#d46a00] hover:underline transition-colors">
+                Masuk disini
+              </Link>
             </div>
           </div>
         </div>
       </div>
-      <footer className="w-full bg-white text-center py-6 text-xs text-gray-800 ">&copy; {new Date().getFullYear()} TiketLoka. All rights reserved.</footer>
+      
+      <footer className="w-full py-6 text-center text-xs text-gray-400">
+        &copy; {new Date().getFullYear()} TiketLoka. All Rights Reserved.
+      </footer>
     </div>
   );
 }
