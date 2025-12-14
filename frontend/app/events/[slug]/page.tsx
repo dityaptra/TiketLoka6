@@ -10,7 +10,7 @@ import {
     MapPin, Loader2, Calendar, ArrowLeft, 
     Minus, Plus, X, CheckCircle, Check, Tag, Star, 
     User as UserIcon, Camera, ChevronLeft, ChevronRight, Info, 
-    ShoppingCart 
+    ShoppingCart, ScanLine, Building2 // <--- Tambah Icon Payment
 } from 'lucide-react';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
@@ -36,7 +36,7 @@ interface Destination {
         image?: string;
         user?: {
             name: string;
-            avatar_url?: string; // Tambahan untuk Avatar
+            avatar_url?: string; 
         };
     }[];
 }
@@ -272,7 +272,7 @@ function ReviewSection({ destination, onRefresh }: { destination: Destination, o
     );
 }
 
-// --- 4. BOOKING CARD (DENGAN REDIRECT KE PAYMENT) ---
+// --- 4. BOOKING CARD (DENGAN PEMILIHAN METODE BAYAR DI MODAL) ---
 function BookingCard({ destination }: { destination: Destination }) {
     const { token } = useAuth();
     const router = useRouter();
@@ -280,7 +280,10 @@ function BookingCard({ destination }: { destination: Destination }) {
     const [date, setDate] = useState('');
     const [qty, setQty] = useState(1);
     const [addons, setAddons] = useState<number[]>([]);
+    
+    // STATE MODAL & PAYMENT
     const [modalOpen, setModalOpen] = useState(false);
+    const [paymentMethod, setPaymentMethod] = useState('qris'); // Default QRIS
     const [processing, setProcessing] = useState(false);
     
     // CONTEXT HOOKS
@@ -338,8 +341,18 @@ function BookingCard({ destination }: { destination: Destination }) {
         setProcessing(true);
         try {
             const res = await fetch('http://127.0.0.1:8000/api/buy-now', {
-                method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ destination_id: destination.id, quantity: qty, visit_date: date, addons: addons, payment_method: 'qris' })
+                method: 'POST', 
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Authorization': `Bearer ${token}` 
+                },
+                body: JSON.stringify({ 
+                    destination_id: destination.id, 
+                    quantity: qty, 
+                    visit_date: date, 
+                    addons: addons, 
+                    payment_method: paymentMethod // <--- Kirim metode yang dipilih user
+                })
             });
             const json = await res.json();
             
@@ -353,7 +366,7 @@ function BookingCard({ destination }: { destination: Destination }) {
                     `Pesanan ${destination.name} berhasil dibuat. Silakan selesaikan pembayaran.`
                 );
 
-                // --- PENTING: REDIRECT KE HALAMAN PEMBAYARAN ---
+                // REDIRECT KE HALAMAN PEMBAYARAN
                 router.push(`/payment/${json.booking_code}`); 
             } else {
                 toast.error(json.message || 'Gagal');
@@ -397,14 +410,47 @@ function BookingCard({ destination }: { destination: Destination }) {
                 </button>
             </div>
 
+            {/* MODAL KONFIRMASI PEMESANAN */}
             {modalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="bg-white rounded-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 shadow-2xl">
                         <div className="bg-[#0B2F5E] px-6 py-4 flex justify-between text-white font-bold items-center"><span className="flex items-center gap-2"><CheckCircle className="w-5 h-5 text-green-400"/> Konfirmasi</span><button onClick={() => setModalOpen(false)}><X/></button></div>
-                        <div className="p-6 space-y-4">
-                            <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-gray-500">Tiket ({qty}x)</span><span className="font-medium">Rp {(destination.price * qty).toLocaleString('id-ID')}</span></div>
-                            {addons.length > 0 && <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-gray-500">Add-ons</span><span className="font-medium">Rp {(total - (destination.price * qty)).toLocaleString('id-ID')}</span></div>}
-                            <div className="flex justify-between font-bold text-lg pt-2"><span>Total Bayar</span><span className="text-[#F57C00]">Rp {total.toLocaleString('id-ID')}</span></div>
+                        <div className="p-6 space-y-5">
+                            {/* Rincian Harga */}
+                            <div className="space-y-3">
+                                <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-gray-500">Tiket ({qty}x)</span><span className="font-medium">Rp {(destination.price * qty).toLocaleString('id-ID')}</span></div>
+                                {addons.length > 0 && <div className="flex justify-between border-b border-gray-100 pb-2"><span className="text-gray-500">Add-ons</span><span className="font-medium">Rp {(total - (destination.price * qty)).toLocaleString('id-ID')}</span></div>}
+                            </div>
+
+                            {/* PILIH METODE BAYAR */}
+                            <div>
+                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Metode Pembayaran</p>
+                                <div className="grid grid-cols-1 gap-2">
+                                    <div 
+                                        onClick={() => setPaymentMethod('qris')}
+                                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${paymentMethod === 'qris' ? 'border-[#F57C00] bg-orange-50 ring-1 ring-[#F57C00]/30' : 'border-gray-200 hover:bg-gray-50'}`}
+                                    >
+                                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${paymentMethod === 'qris' ? 'border-[#F57C00]' : 'border-gray-300'}`}>
+                                            {paymentMethod === 'qris' && <div className="w-3 h-3 bg-[#F57C00] rounded-full" />}
+                                        </div>
+                                        <ScanLine className="w-5 h-5 text-gray-600" />
+                                        <span className="text-sm font-bold text-gray-700">QRIS (Instant)</span>
+                                    </div>
+
+                                    <div 
+                                        onClick={() => setPaymentMethod('bca')}
+                                        className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${paymentMethod === 'bca' ? 'border-[#F57C00] bg-orange-50 ring-1 ring-[#F57C00]/30' : 'border-gray-200 hover:bg-gray-50'}`}
+                                    >
+                                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${paymentMethod === 'bca' ? 'border-[#F57C00]' : 'border-gray-300'}`}>
+                                            {paymentMethod === 'bca' && <div className="w-3 h-3 bg-[#F57C00] rounded-full" />}
+                                        </div>
+                                        <Building2 className="w-5 h-5 text-gray-600" />
+                                        <span className="text-sm font-bold text-gray-700">Bank Transfer (BCA)</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-between font-bold text-lg pt-2 border-t border-gray-100"><span>Total Bayar</span><span className="text-[#F57C00]">Rp {total.toLocaleString('id-ID')}</span></div>
                             <button onClick={handleCheckout} disabled={processing} className="w-full bg-[#0B2F5E] text-white py-3 rounded-xl font-bold hover:bg-[#09254A] transition active:scale-[0.98]">{processing ? 'Memproses...' : 'Bayar Sekarang'}</button>
                         </div>
                     </div>
