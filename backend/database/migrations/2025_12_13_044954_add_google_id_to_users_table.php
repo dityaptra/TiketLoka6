@@ -10,19 +10,29 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up()
-{
-    Schema::table('users', function (Blueprint $table) {
-        // Menambah kolom google_id & membolehkan password kosong
-        $table->string('google_id')->nullable()->after('email');
-        $table->string('password')->nullable()->change();
-    });
-}
+    {
+        Schema::table('users', function (Blueprint $table) {
+            // 1. Cek dulu apakah kolom google_id sudah ada
+            if (!Schema::hasColumn('users', 'google_id')) {
+                $table->string('google_id')->nullable()->after('email');
+            }
 
-public function down()
-{
-    Schema::table('users', function (Blueprint $table) {
-        $table->dropColumn('google_id');
-        $table->string('password')->nullable(false)->change();
-    });
-}
+            // 2. Ubah password jadi nullable (aman dijalankan berulang)
+            $table->string('password')->nullable()->change();
+        });
+    }
+
+    public function down()
+    {
+        Schema::table('users', function (Blueprint $table) {
+            // Hapus kolom google_id jika ada
+            if (Schema::hasColumn('users', 'google_id')) {
+                $table->dropColumn('google_id');
+            }
+            
+            // Kembalikan password menjadi tidak boleh kosong
+            // Note: Hati-hati, ini bisa error jika ada data user dengan password kosong
+            $table->string('password')->nullable(false)->change();
+        });
+    }
 };

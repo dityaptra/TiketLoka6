@@ -19,7 +19,7 @@ Route::post('/login', [AuthController::class, 'login']);
 // Wisata & Kategori
 Route::get('/destinations', [DestinationController::class, 'index']);
 Route::get('/destinations/{slug}', [DestinationController::class, 'show']);
-Route::get('/categories', [CategoryController::class, 'index']); // <--- Untuk Menu Filter Frontend
+Route::get('/categories', [CategoryController::class, 'index']); 
 
 // Review
 Route::get('/reviews/{destinationId}', [ReviewController::class, 'index']);
@@ -40,10 +40,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/cart', [CartController::class, 'store']);
     Route::delete('/cart/{id}', [CartController::class, 'destroy']);
 
-    // Checkout (Dari Keranjang)
+    // Checkout & Transaksi
     Route::post('/checkout', [BookingController::class, 'checkout']);
-
-    // Beli Langsung (Tanpa Keranjang)
     Route::post('/buy-now', [BookingController::class, 'buyNow']);
     Route::get('/my-bookings', [BookingController::class, 'myBookings']);
     Route::get('/bookings/{booking_code}', [BookingController::class, 'show']);
@@ -57,22 +55,36 @@ Route::middleware('auth:sanctum')->group(function () {
         // Dashboard Stats
         Route::get('/dashboard', [DashboardController::class, 'stats']);
 
+        // Manajemen Booking
         Route::get('/bookings', [BookingController::class, 'adminIndex']);
 
         // Manajemen Kategori
         Route::post('/categories', [CategoryController::class, 'store']);
         Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
 
-        // Manajemen Wisata
+        // --- MANAJEMEN DESTINASI ---
+        
+        // 1. Ambil Detail by ID (PENTING: Untuk halaman Edit Admin)
+        Route::get('/destinations/{id}', [DestinationController::class, 'showById']); 
+
+        // 2. CRUD Utama
         Route::post('/destinations', [DestinationController::class, 'store']);
-
-        // PENTING: Gunakan POST untuk update yang ada file gambarnya
-        // Frontend nanti mengirim ke sini dengan form-data
-        Route::post('/destinations/{id}', [DestinationController::class, 'update']);
-
+        Route::post('/destinations/{id}', [DestinationController::class, 'update']); // Update Data + Gambar
         Route::delete('/destinations/{id}', [DestinationController::class, 'destroy']);
 
-        // Manajemen Transaksi
-        Route::get('/bookings', [BookingController::class, 'adminIndex']);
+        // 3. Upload & Hapus Galeri (Tambahan)
+        Route::post('/destinations/{id}/upload-gallery', [DestinationController::class, 'uploadGallery']);
+        Route::delete('/destinations/gallery/{image_id}', [DestinationController::class, 'deleteGalleryImage']);
+
+        // 4. INCLUSIONS & ADDONS (YANG ANDA MINTA)
+        // Tambah Fasilitas
+        Route::post('/destinations/{id}/inclusions', [DestinationController::class, 'storeInclusion']);
+        // Hapus Fasilitas
+        Route::delete('/inclusions/{id}', [DestinationController::class, 'destroyInclusion']);
+
+        // Tambah Addon
+        Route::post('/destinations/{id}/addons', [DestinationController::class, 'storeAddon']);
+        // Hapus Addon
+        Route::delete('/addons/{id}', [DestinationController::class, 'destroyAddon']);
     });
 });

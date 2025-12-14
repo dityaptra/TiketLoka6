@@ -10,17 +10,22 @@ return new class extends Migration
      * Run the migrations.
      */
     public function up()
-{
-    Schema::table('reviews', function (Blueprint $table) {
-        // Tambah kolom image (boleh kosong)
-        $table->string('image')->nullable()->after('comment');
-    });
-}
+    {
+        // CEK DULU: Hanya buat kolom jika belum ada
+        if (!Schema::hasColumn('reviews', 'image')) {
+            Schema::table('reviews', function (Blueprint $table) {
+                $table->string('image')->nullable()->after('comment');
+            });
+        }
+    }
 
-public function down()
-{
-    Schema::table('reviews', function (Blueprint $table) {
-        $table->dropColumn('image');
-    });
-}
+    public function down()
+    {
+        // CEK DULU: Hanya hapus jika kolomnya ada
+        if (Schema::hasColumn('reviews', 'image')) {
+            Schema::table('reviews', function (Blueprint $table) {
+                $table->dropColumn('image');
+            });
+        }
+    }
 };

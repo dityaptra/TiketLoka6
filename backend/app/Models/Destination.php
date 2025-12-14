@@ -35,6 +35,11 @@ class Destination extends Model
         return $this->hasMany(Review::class);
     }
 
+    public function images()
+    {
+        return $this->hasMany(DestinationImage::class);
+    }
+
     // Accessor: Menghitung rata-rata rating secara otomatis
     // Cara panggil di frontend nanti: destination.average_rating
     public function getAverageRatingAttribute()
@@ -50,4 +55,15 @@ class Destination extends Model
 
     // Tambahkan ke $appends agar muncul di JSON response
     protected $appends = ['average_rating', 'total_reviews'];
+
+    // app/Models/Destination.php
+    public function inclusions()
+    {
+        return $this->hasMany(Inclusion::class);
+    }
+
+    public function addons()
+    {
+        return $this->hasMany(Addon::class);
+    }
 }

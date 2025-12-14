@@ -12,15 +12,24 @@ return new class extends Migration
     public function up()
     {
         Schema::table('users', function (Blueprint $table) {
-            // Menambahkan kolom facebook_id setelah google_id
-            $table->string('facebook_id')->nullable()->after('google_id');
+            // Cek dulu apakah kolom facebook_id sudah ada
+            if (!Schema::hasColumn('users', 'facebook_id')) {
+                // Cek apakah kolom google_id ada agar posisi 'after' tidak error
+                if (Schema::hasColumn('users', 'google_id')) {
+                    $table->string('facebook_id')->nullable()->after('google_id');
+                } else {
+                    $table->string('facebook_id')->nullable()->after('email');
+                }
+            }
         });
     }
 
     public function down()
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('facebook_id');
+            if (Schema::hasColumn('users', 'facebook_id')) {
+                $table->dropColumn('facebook_id');
+            }
         });
     }
 };

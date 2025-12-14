@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Destination;
+use App\Models\DestinationImage; // Model Galeri
+use App\Models\Inclusion;        // Model Fasilitas
+use App\Models\Addon;            // Model Add-on
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
@@ -12,18 +15,15 @@ class DestinationController extends Controller
 {
     /**
      * Helper Private: Format Image URL
-     * Agar tidak mengulang kodingan di index dan show
+     * Mengubah path relatif storage menjadi URL lengkap
      */
     private function formatImageUrl($url)
     {
         if (!$url) return null;
-
-        // Cek apakah ini URL online (http/https) seperti Unsplash
         if (filter_var($url, FILTER_VALIDATE_URL)) {
-            return $url;
+            return $url; // Jika sudah URL lengkap (http...), biarkan
         }
-
-        // Jika bukan, berarti file lokal di storage
+        // Jika path storage, tambahkan base URL dan 'storage/'
         return asset('storage/' . $url);
     }
 
@@ -32,51 +32,40 @@ class DestinationController extends Controller
      */
     public function index(Request $request)
     {
-        // 1. Mulai Query
         $query = Destination::query();
         
-        // 2. Load Relasi (Eager Loading)
-        // Tambahkan 'reviews' jika ingin detail, atau cukup withAvg untuk rating
+        // Load Relasi dasar
         $query->with(['category']); 
-        
-        // Hitung rata-rata rating langsung dari database (Efisien)
-        // Ini akan membuat field bernama 'reviews_avg_rating' di JSON response
-        $query->withAvg('reviews', 'rating');
+        $query->withAvg('reviews', 'rating'); // Hitung rata-rata rating
 
-        // 3. LOGIKA FILTER USER vs ADMIN
+        // Filter User vs Admin (Admin bisa lihat semua jika ?all=true)
         if (!$request->has('all') || $request->all !== 'true') {
             $query->where('is_active', true);
         }
 
-        // 4. Fitur Search (Berdasarkan Nama)
+        // Search Nama
         if ($request->has('search') && $request->search != '') {
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
-        // 5. Fitur Filter Kategori (PERBAIKAN DISINI)
-        // Ubah 'category_slug' menjadi 'category' sesuai request Frontend Next.js
+        // Filter Kategori (berdasarkan slug)
         if ($request->has('category') && $request->category != '') {
             $slug = $request->category;
-            
             $query->whereHas('category', function ($q) use ($slug) {
                 $q->where('slug', $slug);
             });
         }
 
-        // 6. Sorting (Opsional: bisa sort by rating juga nantinya)
         $query->latest(); 
 
-        // 7. Eksekusi Query
+        // Gunakan paginate() jika ingin pagination, atau get() untuk semua
+        // Di sini saya pakai get() sesuai kode awal Anda, tapi saya sarankan paginate() untuk performa
         $destinations = $query->get();
 
-        // 8. Transform Data (Format Image URL)
+        // TRANSFORM DATA: Format URL Gambar sebelum dikirim
         $data = $destinations->map(function ($item) {
             $item->image_url = $this->formatImageUrl($item->image_url);
-            
-            // Opsional: Standarisasi nama field rating untuk Frontend
-            // Ambil dari withAvg (reviews_avg_rating) atau accessor model (average_rating)
-            $item->rating = $item->reviews_avg_rating ?? $item->average_rating ?? 0;
-            
+            $item->rating = $item->reviews_avg_rating ?? 0;
             return $item;
         });
 
@@ -91,24 +80,49 @@ class DestinationController extends Controller
      */
     public function show($slug)
     {
-        $destination = Destination::with('category')
+        // Load semua relasi yang dibutuhkan Frontend
+        $destination = Destination::with([
+            'category', 
+            'images', 
+            'inclusions', 
+            'addons', 
+            'reviews.user' // Load review beserta data user-nya
+        ])
             ->where('slug', $slug)
             ->firstOrFail();
 
-        // Format URL gambar menggunakan helper
+        // Format URL gambar utama
         $imageUrl = $this->formatImageUrl($destination->image_url);
+
+        // Format URL Galeri Foto
+        foreach($destination->images as $img) {
+            $img->image_path = $this->formatImageUrl($img->image_path);
+        }
+
+        // Format URL Foto di Review User (jika ada fitur foto review)
+        foreach($destination->reviews as $review) {
+            if ($review->image) {
+                $review->image = $this->formatImageUrl($review->image);
+            }
+        }
 
         return response()->json([
             'data' => [
                 'id' => $destination->id,
                 'name' => $destination->name,
                 'slug' => $destination->slug,
-                'category' => $destination->category->name,
+                'category' => $destination->category->name ?? 'Uncategorized',
                 'description' => $destination->description,
                 'price' => $destination->price,
                 'location' => $destination->location,
-                'image_url' => $imageUrl,
+                'image_url' => $imageUrl, // URL sudah diformat
                 'is_active' => $destination->is_active,
+                
+                // Relasi yang sudah dimuat & diformat
+                'images' => $destination->images,
+                'inclusions' => $destination->inclusions,
+                'addons' => $destination->addons,
+                'reviews' => $destination->reviews,
             ],
             'seo' => [
                 'title' => $destination->meta_title ?? $destination->name,
@@ -120,36 +134,52 @@ class DestinationController extends Controller
     }
 
     /**
+     * ADMIN: Ambil Detail by ID (Untuk Halaman Edit Admin)
+     */
+    public function showById($id)
+    {
+        $destination = Destination::with(['category', 'images', 'inclusions', 'addons'])->find($id);
+
+        if (!$destination) {
+            return response()->json(['status' => 'error', 'message' => 'Not Found'], 404);
+        }
+
+        // Format URL gambar utama
+        $destination->image_url = $this->formatImageUrl($destination->image_url);
+        
+        // Format URL galeri
+        foreach($destination->images as $img) {
+            $img->image_path = $this->formatImageUrl($img->image_path);
+        }
+
+        return response()->json(['status' => 'success', 'data' => $destination]);
+    }
+
+    /**
      * ADMIN: Simpan Wisata Baru
      */
     public function store(Request $request)
     {
-        // Validasi
         $validated = $request->validate([
             'category_id' => 'required|exists:categories,id',
             'name' => 'required|string|max:255',
             'description' => 'required|string',
             'price' => 'required|numeric|min:0',
             'location' => 'required|string',
-            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:2048', // Max 2MB
+            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:2048',
             'meta_title' => 'nullable|string|max:100',
             'meta_description' => 'nullable|string|max:255',
             'meta_keywords' => 'nullable|string',
         ]);
 
-        // Generate Slug Otomatis
         $validated['slug'] = Str::slug($validated['name']);
 
-        // Upload Gambar
         if ($request->hasFile('image')) {
             $path = $request->file('image')->store('destinations', 'public');
             $validated['image_url'] = $path;
-            
-            // Hapus key 'image' agar tidak error saat create (karena kolom db namanya image_url)
             unset($validated['image']);
         }
 
-        // Simpan ke Database
         $destination = Destination::create($validated);
 
         return response()->json([
@@ -175,28 +205,27 @@ class DestinationController extends Controller
             'meta_title' => 'nullable|string',
             'meta_description' => 'nullable|string',
             'meta_keywords' => 'nullable|string',
-            'is_active' => 'boolean'
         ]);
 
-        // Cek jika nama berubah, update slug juga
         if ($request->has('name')) {
             $validated['slug'] = Str::slug($request->name);
         }
 
-        // Cek jika ada upload gambar baru
+        // Handle is_active manually (FormData string "true"/"false")
+        if ($request->has('is_active')) {
+             $validated['is_active'] = filter_var($request->is_active, FILTER_VALIDATE_BOOLEAN);
+        }
+
         if ($request->hasFile('image')) {
-            // Hapus gambar lama (Hanya jika file lokal, bukan URL online)
+            // Hapus gambar lama jika ada dan bukan URL eksternal
             if ($destination->image_url && 
                 !filter_var($destination->image_url, FILTER_VALIDATE_URL) && 
                 Storage::disk('public')->exists($destination->image_url)) {
                 Storage::disk('public')->delete($destination->image_url);
             }
 
-            // Upload yang baru
             $path = $request->file('image')->store('destinations', 'public');
             $validated['image_url'] = $path;
-            
-            // Hapus key 'image'
             unset($validated['image']);
         }
 
@@ -215,15 +244,102 @@ class DestinationController extends Controller
     {
         $destination = Destination::findOrFail($id);
 
-        // Hapus file gambar fisik dari storage
         if ($destination->image_url && 
             !filter_var($destination->image_url, FILTER_VALIDATE_URL) && 
             Storage::disk('public')->exists($destination->image_url)) {
             Storage::disk('public')->delete($destination->image_url);
         }
 
+        // Hapus relasi jika diperlukan (opsional, biasanya diatur via onDelete cascade di migration)
+        // $destination->images()->delete(); 
+
         $destination->delete();
 
         return response()->json(['message' => 'Destinasi wisata berhasil dihapus']);
+    }
+
+    // ==========================================
+    // FITUR TAMBAHAN (GALERI & ADDONS)
+    // ==========================================
+
+    /**
+     * Upload Galeri Foto (Multiple)
+     */
+    public function uploadGallery(Request $request, $id) {
+        $destination = Destination::findOrFail($id);
+        
+        if ($request->hasFile('images')) {
+            foreach ($request->file('images') as $image) {
+                DestinationImage::create([
+                    'destination_id' => $destination->id,
+                    'image_path' => $image->store('destinations', 'public')
+                ]);
+            }
+        }
+
+        // Return data fresh dengan URL yang sudah diformat
+        $freshData = $destination->load('images');
+        foreach($freshData->images as $img) {
+            $img->image_path = $this->formatImageUrl($img->image_path);
+        }
+        
+        return response()->json(['status' => 'success', 'data' => $freshData]);
+    }
+
+    public function deleteGalleryImage($image_id) {
+        $image = DestinationImage::findOrFail($image_id);
+        
+        if (Storage::disk('public')->exists($image->image_path)) {
+            Storage::disk('public')->delete($image->image_path);
+        }
+        
+        $image->delete();
+        return response()->json(['status' => 'success']);
+    }
+
+    /**
+     * Manajemen Inclusions (Fasilitas Paket)
+     */
+    public function storeInclusion(Request $request, $id)
+    {
+        $request->validate(['name' => 'required|string|max:255']);
+        
+        $inclusion = Inclusion::create([
+            'destination_id' => $id,
+            'name' => $request->name
+        ]);
+        
+        return response()->json(['status' => 'success', 'data' => $inclusion]);
+    }
+
+    public function destroyInclusion($id)
+    {
+        Inclusion::destroy($id);
+        return response()->json(['status' => 'success']);
+    }
+
+    /**
+     * Manajemen Addons (Upgrade Paket)
+     */
+    public function storeAddon(Request $request, $id)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'price' => 'required|numeric|min:0'
+        ]);
+        
+        $addon = Addon::create([
+            'destination_id' => $id,
+            'name' => $request->name,
+            'price' => $request->price
+        ]);
+        
+        return response()->json(['status' => 'success', 'data' => $addon]);
+    }
+
+    public function destroyAddon($id)
+    {
+        Addon::destroy($id);
+        return response()->json(['status' => 'success']);
     }
 }
