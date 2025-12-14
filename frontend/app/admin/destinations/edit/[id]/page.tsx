@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -12,8 +12,13 @@ import {
   XCircle,
   Globe,
   Search,
+  MapPin,
 } from "lucide-react";
 import Swal from "sweetalert2";
+
+// Import Komponen Manager Tambahan
+import FeatureManager from "@/components/admin/FeatureManager";
+import GalleryManager from "@/components/admin/GalleryManager";
 
 // 1. Define Interfaces
 interface Category {
@@ -21,6 +26,7 @@ interface Category {
   name: string;
 }
 
+// Update Interface agar mencakup relasi
 interface Destination {
   id: number;
   name: string;
@@ -33,6 +39,10 @@ interface Destination {
   meta_title?: string;
   meta_description?: string;
   meta_keywords?: string;
+  // Relasi (Opsional agar tidak error jika null)
+  images?: any[];
+  inclusions?: any[];
+  addons?: any[];
 }
 
 interface DestinationForm {
@@ -56,8 +66,11 @@ export default function EditDestinationPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [initialData, setInitialData] = useState<DestinationForm | null>(null);
+  
+  // State untuk Data Full (termasuk relasi untuk child components)
+  const [fullDestinationData, setFullDestinationData] = useState<Destination | null>(null);
 
+  const [initialData, setInitialData] = useState<DestinationForm | null>(null);
   const [formData, setFormData] = useState<DestinationForm>({
     name: "",
     category_id: "",
@@ -81,51 +94,62 @@ export default function EditDestinationPage() {
     return `http://127.0.0.1:8000/storage/${imageUrl}`;
   };
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const resCat = await fetch("http://127.0.0.1:8000/api/categories");
-        const jsonCat = await resCat.json();
-        setCategories(jsonCat.data || jsonCat);
+  // Gunakan useCallback agar bisa dipanggil ulang oleh child component (onUpdate)
+  const fetchData = useCallback(async () => {
+    try {
+      // 1. Fetch Categories
+      const resCat = await fetch("http://127.0.0.1:8000/api/categories");
+      const jsonCat = await resCat.json();
+      setCategories(jsonCat.data || jsonCat);
 
-        const resDest = await fetch(
-          "http://127.0.0.1:8000/api/destinations?all=true"
-        );
-        const jsonDest = await resDest.json();
-
-        const data = jsonDest.data.find(
-          (item: Destination) => item.id == Number(destinationId)
-        );
-
-        if (data) {
-          const loadedData: DestinationForm = {
-            name: data.name,
-            category_id: data.category_id,
-            description: data.description,
-            price: data.price,
-            location: data.location,
-            is_active: Boolean(data.is_active),
-            meta_title: data.meta_title ?? "",
-            meta_description: data.meta_description ?? "",
-            meta_keywords: data.meta_keywords ?? "",
-          };
-
-          setFormData(loadedData);
-          setInitialData(loadedData);
-          setCurrentImage(data.image_url);
-        } else {
-          Swal.fire("Error", "Data tidak ditemukan!", "error");
-          router.push("/admin/destinations");
+      // 2. Fetch Destination Detail (ADMIN ENDPOINT)
+      const resDest = await fetch(
+        `http://127.0.0.1:8000/api/admin/destinations/${destinationId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      );
 
-    if (destinationId) fetchData();
-  }, [destinationId, router]);
+      if (resDest.ok) {
+        const jsonDest = await resDest.json();
+        const data = jsonDest.data;
+
+        // Simpan data lengkap untuk child component
+        setFullDestinationData(data);
+
+        // Set Form Data Utama
+        const loadedData: DestinationForm = {
+          name: data.name,
+          category_id: data.category_id,
+          description: data.description,
+          price: data.price,
+          location: data.location,
+          is_active: Boolean(Number(data.is_active)), // Handle 1/0 or true/false
+          meta_title: data.meta_title ?? "",
+          meta_description: data.meta_description ?? "",
+          meta_keywords: data.meta_keywords ?? "",
+        };
+
+        setFormData(loadedData);
+        setInitialData(loadedData);
+        setCurrentImage(data.image_url);
+      } else {
+        Swal.fire("Error", "Data tidak ditemukan!", "error");
+        router.push("/admin/destinations");
+      }
+    } catch (err) {
+      console.error(err);
+      Swal.fire("Error", "Gagal memuat data", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [destinationId, token, router]);
+
+  useEffect(() => {
+    if (destinationId && token) fetchData();
+  }, [fetchData, destinationId, token]);
 
   const handleChange = (
     e: React.ChangeEvent<
@@ -184,7 +208,7 @@ export default function EditDestinationPage() {
       data.append("description", formData.description);
       data.append("price", String(formData.price));
       data.append("location", formData.location);
-      data.append("is_active", formData.is_active ? "1" : "0");
+      data.append("is_active", formData.is_active ? "true" : "false");
       data.append("meta_title", formData.meta_title);
       data.append("meta_description", formData.meta_description);
       data.append("meta_keywords", formData.meta_keywords);
@@ -215,7 +239,7 @@ export default function EditDestinationPage() {
           showConfirmButton: false,
           timer: 1500,
         });
-        router.push("/admin/destinations");
+        fetchData();
       } else {
         Swal.fire({
           icon: "error",
@@ -237,10 +261,12 @@ export default function EditDestinationPage() {
     }
   };
 
+  // --- STYLE PERBAIKAN (HIGH CONTRAST) ---
+  // Perubahan: border-gray-300 (lebih gelap), text-gray-900 (hitam pekat), bg-white (solid)
   const inputClass =
-    "w-full px-4 py-3 rounded-lg border border-gray-200 bg-white text-gray-800 placeholder:text-gray-400 focus:border-[#0B2F5E] focus:ring-1 focus:ring-[#0B2F5E] outline-none transition-all text-sm shadow-sm";
+    "w-full px-4 py-3 rounded-lg border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-[#0B2F5E] focus:ring-2 focus:ring-[#0B2F5E]/20 outline-none transition duration-200 text-sm shadow-sm";
   const labelClass =
-    "block text-xs font-bold text-gray-500 uppercase mb-1.5 tracking-wide";
+    "block text-xs font-bold text-gray-600 uppercase mb-1.5 tracking-wide";
 
   if (isLoading)
     return (
@@ -250,7 +276,7 @@ export default function EditDestinationPage() {
     );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-20">
       {/* HEADER NAV */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-20 px-6 py-4 shadow-sm flex items-center gap-4 rounded-lg">
         <button
@@ -340,14 +366,17 @@ export default function EditDestinationPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
                 <label className={labelClass}>Lokasi</label>
-                <input
-                  type="text"
-                  name="location"
-                  required
-                  value={formData.location}
-                  onChange={handleChange}
-                  className={inputClass}
-                />
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="location"
+                    required
+                    value={formData.location}
+                    onChange={handleChange}
+                    className={`${inputClass} pl-10`}
+                  />
+                  <MapPin className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                </div>
               </div>
               <div>
                 <label className={labelClass}>Harga Tiket (Rp)</label>
@@ -374,11 +403,10 @@ export default function EditDestinationPage() {
             </div>
           </div>
 
-          {/* SECTION 3: Upload Foto */}
+          {/* SECTION 3: Upload Foto Utama */}
           <div>
             <h3 className="text-base font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-1 h-6 bg-gray-400 rounded-full"></span> Foto
-              Galeri
+              <span className="w-1 h-6 bg-gray-400 rounded-full"></span> Foto Utama
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Preview Gambar */}
@@ -396,15 +424,6 @@ export default function EditDestinationPage() {
                     className="w-full h-full object-cover rounded-lg"
                     onError={(e) => {
                       e.currentTarget.style.display = "none";
-                      const parent = e.currentTarget.parentElement;
-                      if (parent) {
-                        parent.innerHTML = `
-                          <div class="text-gray-400 flex flex-col items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                            <span class="text-xs mt-1">No Image</span>
-                          </div>
-                        `;
-                      }
                     }}
                   />
                 ) : (
@@ -489,7 +508,7 @@ export default function EditDestinationPage() {
 
           <hr className="border-gray-100" />
 
-          {/* TOMBOL AKSI */}
+          {/* TOMBOL AKSI UTAMA */}
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
@@ -515,6 +534,43 @@ export default function EditDestinationPage() {
           </div>
         </form>
       </div>
+
+      {/* --- INTEGRASI FEATURE MANAGER & GALLERY MANAGER --- */}
+      {fullDestinationData && (
+        <div className="space-y-10">
+          {/* GALLERY MANAGER */}
+          <div className="border-t-2 border-gray-200 pt-8">
+            <h2 className="text-xl font-bold mb-2 text-[#0B2F5E]">
+              📸 Galeri Foto Tambahan
+            </h2>
+            <p className="text-gray-500 mb-6 text-sm">
+              Kelola foto tambahan untuk ditampilkan dalam galeri bento grid.
+            </p>
+            <GalleryManager
+              destinationId={fullDestinationData.id}
+              existingImages={fullDestinationData.images || []}
+              onUpdate={fetchData}
+            />
+          </div>
+
+          {/* FEATURE MANAGER (Inclusion & Addons) */}
+          <div className="border-t-2 border-gray-200 pt-8">
+            <h2 className="text-xl font-bold mb-2 text-[#0B2F5E]">
+              🛠️ Fasilitas & Add-on
+            </h2>
+            <p className="text-gray-500 mb-6 text-sm">
+              Kelola apa saja yang termasuk paket dan opsi tambahan berbayar.
+            </p>
+
+            <FeatureManager
+              destinationId={fullDestinationData.id}
+              inclusions={fullDestinationData.inclusions || []}
+              addons={fullDestinationData.addons || []}
+              onUpdate={fetchData}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

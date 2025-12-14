@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation"; // Tambahkan usePathname
 import { useAuth } from "@/context/AuthContext";
 import {
   LogOut,
@@ -13,15 +13,8 @@ import {
   CircleHelp,
   ChevronDown,
   Settings,
-  Heart,
-  Gift,
-  MessageSquare,
-  Users,
-  ClipboardList,
-  Award,
-  TicketPercent,
-  Wallet,
-  LucideIcon, // Import tipe icon jika diperlukan
+  Home, // Tambahkan Icon Home
+  LucideIcon,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 
@@ -38,14 +31,12 @@ const useCart = () => {
 };
 
 const Navbar = () => {
-  // Pastikan useAuth Anda sudah memiliki typing yang benar di context file
-  const { user, logout } = useAuth(); 
+  const { user, logout } = useAuth();
   const router = useRouter();
+  const pathname = usePathname(); // Hook untuk cek URL aktif
   const { cartItemCount } = useCart();
 
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState<boolean>(false);
-  
-  // Penambahan tipe HTMLDivElement untuk useRef
   const menuRef = useRef<HTMLDivElement>(null);
 
   const notificationCount = 3;
@@ -63,9 +54,7 @@ const Navbar = () => {
   };
 
   useEffect(() => {
-    // Tipe event adalah MouseEvent native
     const handleClickOutside = (event: MouseEvent) => {
-      // Pengecekan 'event.target as Node' diperlukan di TypeScript
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsProfileMenuOpen(false);
       }
@@ -77,10 +66,20 @@ const Navbar = () => {
     };
   }, [menuRef]);
 
-  const navBtnStyle =
-    "flex items-center gap-2 px-3 py-2 rounded-full text-gray-600 hover:bg-blue-50 hover:text-[#0B2F5E] transition-all duration-200 group";
+  // Style dasar tombol navigasi
+  const baseNavStyle = "flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-200 group";
+  
+  // Helper function untuk menentukan style aktif/tidak aktif
+  const getNavStyle = (path: string) => {
+    const isActive = pathname === path;
+    return `${baseNavStyle} ${
+      isActive 
+        ? "bg-blue-50 text-[#0B2F5E] font-bold" 
+        : "text-gray-600 hover:bg-blue-50 hover:text-[#0B2F5E]"
+    }`;
+  };
 
-  // Array menu dengan tipe MenuItem[]
+  // Array menu profile
   const profileMenuItems: MenuItem[] = [
     { label: "Pengaturan", icon: Settings, href: "/settings" },
   ];
@@ -102,15 +101,22 @@ const Navbar = () => {
         </Link>
 
         {/* --- BAGIAN KANAN --- */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
+          
+          {/* MENU BERANDA (DITAMBAHKAN) */}
+          <Link href="/" className={getNavStyle("/")}>
+            <Home className="w-5 h-5" />
+            <span className="text-sm font-medium hidden sm:block">Beranda</span>
+          </Link>
+
           {/* TOMBOL BANTUAN */}
-          <Link href="/help" className={navBtnStyle}>
+          <Link href="/help" className={getNavStyle("/help")}>
             <CircleHelp className="w-5 h-5" />
             <span className="text-sm font-medium hidden sm:block">Bantuan</span>
           </Link>
 
           {/* KERANJANG */}
-          <button onClick={handleCartClick} className={`${navBtnStyle} relative`}>
+          <button onClick={handleCartClick} className={`${getNavStyle("/cart")} relative`}>
             <div className="relative">
               <ShoppingCart className="w-5 h-5" />
               {cartItemCount > 0 && (
@@ -124,7 +130,7 @@ const Navbar = () => {
 
           {/* TIKET SAYA */}
           {user && (
-            <button onClick={handleTicketsClick} className={navBtnStyle}>
+            <button onClick={handleTicketsClick} className={getNavStyle("/tickets")}>
               <Ticket className="w-5 h-5" />
               <span className="text-sm font-medium hidden sm:block">Tiket Saya</span>
             </button>
@@ -132,7 +138,7 @@ const Navbar = () => {
 
           {/* NOTIFIKASI */}
           {user && (
-            <button className={navBtnStyle}>
+            <button className={getNavStyle("/notifications")}>
               <div className="relative">
                 <Bell className="w-5 h-5" />
                 {notificationCount > 0 && (
@@ -145,7 +151,7 @@ const Navbar = () => {
             </button>
           )}
 
-          {/* --- USER PROFILE (BAGIAN UTAMA YANG DIUBAH) --- */}
+          {/* --- USER PROFILE --- */}
           {user ? (
             <div
               className="relative ml-2 pl-2 border-l border-blue-200"
@@ -157,12 +163,10 @@ const Navbar = () => {
               >
                 {/* Avatar Icon */}
                 <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 overflow-hidden border border-blue-200">
-                   {/* Jika user memiliki properti image, render Image component, jika tidak pakai icon User */}
-                   {/* <User size={20} /> */}
                    <User size={20} />
                 </div>
                 
-                {/* Chevron Arrow dengan Animasi Rotasi */}
+                {/* Chevron Arrow */}
                 <ChevronDown 
                   size={16} 
                   className={`text-gray-500 transition-transform duration-300 ${

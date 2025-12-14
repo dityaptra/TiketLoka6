@@ -6,21 +6,23 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up()
-{
-    Schema::table('booking_details', function (Blueprint $table) {
-        // Tambah kolom ticket_code yang unik
-        $table->string('ticket_code')->after('destination_id')->unique()->nullable();
-    });
-}
+    {
+        // Cek dulu apakah kolom SUDAH ada
+        if (!Schema::hasColumn('booking_details', 'ticket_code')) {
+            Schema::table('booking_details', function (Blueprint $table) {
+                // Sesuaikan tipe datanya dengan kode asli Anda
+                $table->string('ticket_code')->nullable()->after('destination_id');
+            });
+        }
+    }
 
-public function down()
-{
-    Schema::table('booking_details', function (Blueprint $table) {
-        $table->dropColumn('ticket_code');
-    });
-}
+    public function down()
+    {
+        if (Schema::hasColumn('booking_details', 'ticket_code')) {
+            Schema::table('booking_details', function (Blueprint $table) {
+                $table->dropColumn('ticket_code');
+            });
+        }
+    }
 };
