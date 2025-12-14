@@ -46,20 +46,20 @@ class BookingController extends Controller
             }
 
             // Generate kode booking unique
-            // Using a loop inside transaction to ensure uniqueness even under heavy load
             do {
                 $bookingCode = Str::upper(Str::random(8));
             } while (Booking::where('booking_code', $bookingCode)->exists());
 
-            // Buat Transaksi
+            // Buat Transaksi (STATUS PENDING)
             $booking = Booking::create([
                 'user_id' => $userId,
                 'booking_code' => $bookingCode,
                 'grand_total' => $total,
-                'status' => 'success', // Simulasi langsung sukses
-                'paid_at' => now(),
+                'status' => 'pending', 
+                'paid_at' => null,     
                 'payment_method' => $request->payment_method,
-                'qr_string' => $bookingCode,
+                // Generate QR String Dummy (Format: TIKETLOKA-PAY-KODEBOOKING)
+                'qr_string' => 'TIKETLOKA-PAY-' . $bookingCode,
             ]);
 
             // Kumpulkan ID cart yang berhasil diproses untuk dihapus nanti
@@ -84,7 +84,7 @@ class BookingController extends Controller
             Cart::whereIn('id', $processedCartIds)->delete();
 
             return response()->json([
-                'message' => 'Transaksi berhasil',
+                'message' => 'Pesanan dibuat, silakan lakukan pembayaran',
                 'booking_code' => $booking->booking_code,
                 'data' => $booking
             ], 201);
@@ -94,8 +94,6 @@ class BookingController extends Controller
     // Beli langsung (tanpa keranjang)
     public function buyNow(Request $request)
     {
-        
-        // Add validation for direct buy
         $request->validate([
             'destination_id' => 'required|exists:destinations,id',
             'quantity' => 'required|integer|min:1',
@@ -105,6 +103,7 @@ class BookingController extends Controller
 
         $userId = $request->user()->id;
         $destination = Destination::findOrFail($request->destination_id);
+        
         return DB::transaction(function () use ($request, $userId, $destination) {
 
             $totalAmount = $destination->price * $request->quantity;
@@ -114,14 +113,15 @@ class BookingController extends Controller
                 $bookingCode = Str::upper(Str::random(8));
             } while (Booking::where('booking_code', $bookingCode)->exists());
 
+            // Buat Transaksi (STATUS PENDING)
             $booking = Booking::create([
                 'user_id' => $userId,
                 'booking_code' => $bookingCode,
                 'grand_total' => $totalAmount,
-                'status' => 'success',
-                'paid_at' => now(),
+                'status' => 'pending', 
+                'paid_at' => null,     
                 'payment_method' => $request->payment_method,
-                'qr_string' => $bookingCode,
+                'qr_string' => 'TIKETLOKA-PAY-' . $bookingCode,
             ]);
 
             $uniqueTicketCode = 'TKT-' . $destination->id . '-' . Str::upper(Str::random(6));
@@ -138,7 +138,7 @@ class BookingController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Transaksi berhasil & Pembayaran terkonfirmasi otomatis',
+                'message' => 'Pesanan dibuat, silakan lakukan pembayaran',
                 'booking_code' => $booking->booking_code,
                 'data' => $booking
             ], 201);
@@ -156,15 +156,13 @@ class BookingController extends Controller
         return response()->json(['data' => $bookings]);
     }
 
-    // Detail Satu Transaksi (Untuk User melihat Booking ID)
+    // Detail Satu Transaksi (Umum)
     public function show($booking_code)
     {
         $booking = Booking::with(['details.destination', 'user'])
             ->where('booking_code', $booking_code)
             ->firstOrFail();
 
-        // Keamanan: Pastikan yang lihat adalah pemilik atau admin
-        // Check if user is authenticated before accessing role
         $user = Auth::user();
         if ($booking->user_id !== $user->id && $user->role !== 'admin') {
             return response()->json(['message' => 'Unauthorized'], 403);
@@ -173,10 +171,78 @@ class BookingController extends Controller
         return response()->json(['data' => $booking]);
     }
 
-    // Lihat Semua Transaksi (Bisa Filter Status)
+    // --- FITUR: Lihat Detail untuk Halaman Pembayaran ---
+    public function showByCode($booking_code, Request $request)
+    {
+        $booking = Booking::with(['details.destination'])
+            ->where('booking_code', $booking_code)
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        // Mapping agar frontend mudah membaca QR String
+        $booking->qris_string = $booking->qr_string; 
+
+        return response()->json(['data' => $booking]);
+    }
+
+    // --- PERBAIKAN: Method Cancel yang Lebih Aman ---
+    public function cancel($booking_code, Request $request)
+    {
+        try {
+            $booking = Booking::where('booking_code', $booking_code)
+                ->where('user_id', $request->user()->id)
+                ->first();
+
+            if (!$booking) {
+                return response()->json(['message' => 'Pesanan tidak ditemukan'], 404);
+            }
+
+            // Hanya bisa cancel jika status masih pending
+            if ($booking->status !== 'pending') {
+                return response()->json(['message' => 'Pesanan tidak bisa dibatalkan karena sudah diproses'], 400);
+            }
+
+            $booking->status = 'cancelled';
+            $booking->save();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Pesanan berhasil dibatalkan', 
+                'data' => $booking
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Terjadi kesalahan server: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // --- TAMBAHAN BARU: Simulasi Bayar Sukses (Untuk tombol 'Saya Sudah Bayar') ---
+    public function markAsPaid($booking_code, Request $request)
+    {
+        $booking = Booking::where('booking_code', $booking_code)
+            ->where('user_id', $request->user()->id)
+            ->firstOrFail();
+
+        if ($booking->status === 'paid') {
+            return response()->json(['message' => 'Pesanan sudah dibayar sebelumnya']);
+        }
+
+        // Ubah status jadi paid
+        $booking->status = 'paid';
+        $booking->paid_at = now();
+        $booking->save();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Pembayaran Berhasil Dikonfirmasi!',
+            'data' => $booking
+        ]);
+    }
+
+    // Lihat Semua Transaksi (Admin)
     public function adminIndex(Request $request)
     {
-        // Eager load details.destination is often useful for admin views
         $query = Booking::with(['user', 'details.destination']);
 
         if ($request->has('status')) {
@@ -191,7 +257,7 @@ class BookingController extends Controller
             ]);
         }
         
-        // Search functionality if needed
+        // Search
         if ($request->has('search')) {
              $search = $request->search;
              $query->where(function($q) use ($search) {
@@ -203,10 +269,9 @@ class BookingController extends Controller
              });
         }
 
-        // Pagination is usually better for admin lists
         $perPage = $request->input('per_page', 5);
         $bookings = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
-        return response()->json($bookings); // Returns pagination meta data too
+        return response()->json($bookings);
     }
 }

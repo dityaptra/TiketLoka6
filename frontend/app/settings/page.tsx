@@ -1,270 +1,349 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAuth } from "@/context/AuthContext"; // Sesuaikan path context Anda
-import {
-  User,
-  Phone,
-  Lock,
-  Eye,
-  EyeOff,
-  Save,
-  Loader2,
-  AlertCircle,
-  CheckCircle2,
+import { useAuth } from "@/context/AuthContext";
+import Navbar from "@/components/layout/Navbar";
+import { 
+  User, Mail, Phone, Camera, Save, Lock, 
+  Loader2, LogOut, Ticket, Bell, ChevronRight,
+  Eye, EyeOff // <--- IMPORT IKON MATA
 } from "lucide-react";
 import Image from "next/image";
+import toast from "react-hot-toast";
+import { useRouter } from "next/navigation";
+
+// Helper URL Gambar
+const getAvatarUrl = (url: string | undefined) => {
+  if (!url) return null;
+  if (url.startsWith("http")) return url;
+  return `http://127.0.0.1:8000/storage/${url}`;
+};
 
 export default function SettingsPage() {
-  const { user } = useAuth(); // Mengambil data user saat ini
+  const { user, logout, token, updateUser } = useAuth();
+  const router = useRouter();
+  
+  // State Tab
+  const [activeTab, setActiveTab] = useState<"profile" | "password">("profile");
+  
+  // State Form Profil
+  const [profileForm, setProfileForm] = useState({ name: "", email: "", phone_number: "", avatar: null as File | null });
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  
+  // State Form Password
+  const [passForm, setPassForm] = useState({ 
+    current_password: "", 
+    new_password: "", 
+    new_password_confirmation: "" 
+  });
 
-  // --- STATE UNTUK PROFILE ---
-  const [fullName, setFullName] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [isProfileLoading, setIsProfileLoading] = useState(false);
-  const [profileMessage, setProfileMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  // STATE VISIBILITAS PASSWORD (BARU)
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  
+  const [loading, setLoading] = useState(false);
 
-  // --- STATE UNTUK PASSWORD ---
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [isPasswordLoading, setIsPasswordLoading] = useState(false);
-  const [passwordMessage, setPasswordMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
-
-  // Mengisi data awal form saat user berhasil dimuat
+  // Load Data User
   useEffect(() => {
     if (user) {
-      setFullName(user.name || "");
-      // Asumsi user punya properti phone, jika tidak ada kosongkan
-      setPhoneNumber(user.phone || ""); 
+      setProfileForm({
+        name: user.name || "",
+        email: user.email || "",
+        phone_number: user.phone_number || "",
+        avatar: null,
+      });
+      if (user.avatar_url) setAvatarPreview(getAvatarUrl(user.avatar_url));
     }
   }, [user]);
 
-  // --- HANDLER UPDATE PROFILE ---
+  // --- HANDLER UPDATE PROFIL ---
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsProfileLoading(true);
-    setProfileMessage(null);
-
+    setLoading(true);
+    
+    const formData = new FormData();
+    formData.append("name", profileForm.name);
+    if(profileForm.phone_number) formData.append("phone_number", profileForm.phone_number);
+    if (profileForm.avatar) formData.append("avatar", profileForm.avatar);
+    
     try {
-      // TODO: PANGGIL API UPDATE PROFILE DI SINI
-      // const response = await api.put('/user/profile', { name: fullName, phone: phoneNumber });
+      const res = await fetch("http://127.0.0.1:8000/api/profile", {
+        method: "POST",
+        headers: { 
+            "Accept": "application/json",
+            Authorization: `Bearer ${token}` 
+        },
+        body: formData,
+      });
       
-      // Simulasi delay API
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const json = await res.json();
       
-      setProfileMessage({ type: 'success', text: 'Profil berhasil diperbarui!' });
+      if (res.ok) {
+        toast.success("Profil berhasil diperbarui!");
+        const userData = json.data || json;
+        if (userData) {
+            updateUser(userData);
+            if (userData.avatar_url) {
+                setAvatarPreview(getAvatarUrl(userData.avatar_url));
+            }
+        }
+      } else {
+        toast.error(json.message || "Gagal update profil");
+      }
     } catch (error) {
-      setProfileMessage({ type: 'error', text: 'Gagal memperbarui profil. Coba lagi.' });
+      console.error(error);
+      toast.error("Terjadi kesalahan server");
     } finally {
-      setIsProfileLoading(false);
+      setLoading(false);
     }
   };
 
-  // --- HANDLER UPDATE PASSWORD ---
-  const handleUpdatePassword = async (e: React.FormEvent) => {
+  // --- HANDLER GANTI PASSWORD ---
+  const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsPasswordLoading(true);
-    setPasswordMessage(null);
-
-    // Validasi Sederhana
-    if (newPassword !== confirmPassword) {
-      setPasswordMessage({ type: 'error', text: 'Konfirmasi password tidak cocok.' });
-      setIsPasswordLoading(false);
-      return;
-    }
-    if (newPassword.length < 6) {
-        setPasswordMessage({ type: 'error', text: 'Password minimal 6 karakter.' });
-        setIsPasswordLoading(false);
-        return;
+    
+    if (passForm.new_password !== passForm.new_password_confirmation) {
+        return toast.error("Konfirmasi password tidak cocok");
     }
 
+    setLoading(true);
     try {
-      // TODO: PANGGIL API GANTI PASSWORD DI SINI
-      // await api.put('/user/password', { currentPassword, newPassword });
+      const res = await fetch("http://127.0.0.1:8000/api/password", {
+        method: "PUT",
+        headers: { 
+            "Content-Type": "application/json", 
+            "Accept": "application/json",
+            Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify(passForm),
+      });
+      
+      const json = await res.json();
 
-      // Simulasi delay API
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
-      setPasswordMessage({ type: 'success', text: 'Password berhasil diubah!' });
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
+      if (res.ok) {
+        toast.success("Password berhasil diubah");
+        setPassForm({ current_password: "", new_password: "", new_password_confirmation: "" });
+      } else {
+        if (json.errors) {
+            const firstError = Object.values(json.errors)[0];
+            toast.error(Array.isArray(firstError) ? firstError[0] : "Validasi gagal");
+        } else {
+            toast.error(json.message || "Gagal mengubah password");
+        }
+      }
     } catch (error) {
-      setPasswordMessage({ type: 'error', text: 'Password lama salah atau terjadi kesalahan.' });
+      console.error(error);
+      toast.error("Error server");
     } finally {
-      setIsPasswordLoading(false);
+      setLoading(false);
     }
   };
+
+  const getInitials = (name: string) => name ? name.charAt(0).toUpperCase() : "U";
+
+  if (!user) return <div className="min-h-screen flex justify-center items-center"><Loader2 className="animate-spin text-[#0B2F5E]"/></div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-6">
-        
-        {/* HEADER */}
-        <div>
-          <h1 className="text-2xl font-bold text-[#0B2F5E]">Pengaturan Akun</h1>
-          <p className="text-gray-500 text-sm mt-1">Kelola informasi profil dan keamanan akun Anda.</p>
+    <div className="min-h-screen bg-[#F8F9FA] font-sans text-gray-800 antialiased pb-20">
+      <Navbar />
+
+      <div className="max-w-7xl mx-auto px-4 pt-28">
+        <div className="mb-8">
+          <h1 className="text-3xl md:text-4xl font-extrabold text-[#0B2F5E] tracking-tight">Pengaturan Akun</h1>
+          <p className="text-gray-500 mt-2 text-lg">Kelola informasi profil dan keamanan akun Anda.</p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* KOLOM KIRI: FOTO PROFIL (Opsional/Statis dulu) */}
-          <div className="lg:col-span-1">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center">
-              <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mb-4 relative overflow-hidden border-2 border-white shadow-md">
-                 <User size={40} className="text-[#0B2F5E]" />
-              </div>
-              <h2 className="font-bold text-gray-800 text-lg">{fullName || "User"}</h2>
-              <p className="text-sm text-gray-500 mb-4">Member TiketLoka</p>
+          {/* SIDEBAR */}
+          <div className="lg:col-span-3 lg:sticky lg:top-28 space-y-6">
+            <div className="bg-white rounded-2xl p-6 shadow-md border border-gray-100 text-center">
+                <div className="w-20 h-20 rounded-full bg-blue-50 text-[#0B2F5E] flex items-center justify-center font-bold text-3xl overflow-hidden mx-auto mb-4 border-4 border-white shadow-sm relative">
+                  {avatarPreview ? <Image src={avatarPreview} alt="Avatar" fill className="object-cover" unoptimized/> : getInitials(user.name)}
+                </div>
+                <h3 className="font-bold text-gray-900 text-lg truncate">{user.name}</h3>
+                <p className="text-sm text-gray-500 truncate">{user.email}</p>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
+              <nav className="flex flex-col p-2">
+                <button 
+                  onClick={() => setActiveTab("profile")}
+                  className={`flex items-center justify-between w-full px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 mb-1 ${activeTab === 'profile' ? 'bg-blue-50 text-[#0B2F5E]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                >
+                  <div className="flex items-center gap-3"><User size={18}/> Profil Saya</div>
+                  {activeTab === 'profile' && <ChevronRight size={16} />}
+                </button>
+
+                <button 
+                  onClick={() => setActiveTab("password")}
+                  className={`flex items-center justify-between w-full px-4 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 mb-1 ${activeTab === 'password' ? 'bg-blue-50 text-[#0B2F5E]' : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'}`}
+                >
+                  <div className="flex items-center gap-3"><Lock size={18}/> Kata Sandi</div>
+                  {activeTab === 'password' && <ChevronRight size={16} />}
+                </button>
+
+                <div className="my-2 border-t border-gray-100"></div>
+
+                <button onClick={() => router.push('/tickets')} className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all">
+                  <Ticket size={18} /> Tiket Saya
+                </button>
+                <button onClick={() => router.push('/notifications')} className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all">
+                  <Bell size={18} /> Notifikasi
+                </button>
+                <button onClick={logout} className="flex items-center gap-3 w-full px-4 py-3.5 rounded-xl text-sm font-bold text-red-600 hover:bg-red-50 transition-all mt-1">
+                  <LogOut size={18} /> Keluar Akun
+                </button>
+              </nav>
             </div>
           </div>
 
-          {/* KOLOM KANAN: FORM SETTINGS */}
-          <div className="lg:col-span-2 space-y-6">
+          {/* CONTENT */}
+          <div className="lg:col-span-9">
             
-            {/* 1. CARD EDIT DATA DIRI */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <div className="flex items-center gap-2 mb-6 border-b border-gray-100 pb-4">
-                <User className="w-5 h-5 text-[#0B2F5E]" />
-                <h3 className="font-bold text-gray-800">Data Pribadi</h3>
-              </div>
-
-              {profileMessage && (
-                <div className={`mb-4 p-3 rounded-lg flex items-center gap-2 text-sm ${profileMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                  {profileMessage.type === 'success' ? <CheckCircle2 size={16}/> : <AlertCircle size={16}/>}
-                  {profileMessage.text}
+            {/* TAB EDIT PROFIL */}
+            {activeTab === "profile" && (
+              <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 md:p-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="flex justify-between items-center mb-8 border-b border-gray-100 pb-6">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900">Edit Profil</h2>
+                        <p className="text-gray-500 text-sm mt-1">Perbarui informasi pribadi Anda</p>
+                    </div>
                 </div>
-              )}
-
-              <form onSubmit={handleUpdateProfile} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-[#0B2F5E] transition-all outline-none text-sm"
-                      placeholder="Masukkan nama lengkap"
-                    />
+                
+                <form onSubmit={handleUpdateProfile}>
+                  <div className="flex items-center gap-6 mb-8">
+                    <div className="relative w-24 h-24 rounded-full border-4 border-gray-50 bg-gray-100 flex items-center justify-center text-3xl font-bold text-gray-400 overflow-hidden shadow-inner group shrink-0">
+                      {avatarPreview ? <Image src={avatarPreview} alt="Preview" fill className="object-cover" unoptimized/> : getInitials(user.name)}
+                      <label className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                        <Camera className="text-white w-8 h-8" />
+                        <input type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) { setProfileForm({ ...profileForm, avatar: e.target.files[0] }); setAvatarPreview(URL.createObjectURL(e.target.files[0])); }}}/>
+                      </label>
+                    </div>
+                    <div>
+                        <h3 className="font-bold text-gray-900 text-lg">Foto Profil</h3>
+                        <p className="text-sm text-gray-500 mb-2">Format: JPG, PNG. Maks 2MB.</p>
+                        <label className="text-sm font-bold text-[#F57C00] cursor-pointer hover:underline">
+                            Ganti Foto
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files?.[0]) { setProfileForm({ ...profileForm, avatar: e.target.files[0] }); setAvatarPreview(URL.createObjectURL(e.target.files[0])); }}}/>
+                        </label>
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Telepon</label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
-                    <input
-                      type="tel"
-                      value={phoneNumber}
-                      onChange={(e) => setPhoneNumber(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-[#0B2F5E] transition-all outline-none text-sm"
-                      placeholder="0812..."
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">Nama Lengkap</label>
+                      <div className="relative">
+                        <User className="absolute left-4 top-3.5 text-gray-400 w-5 h-5" />
+                        <input type="text" value={profileForm.name} onChange={(e) => setProfileForm({...profileForm, name: e.target.value})} className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-300 focus:border-[#0B2F5E] focus:ring-2 focus:ring-blue-50 outline-none transition-all font-medium text-gray-900 placeholder:text-gray-400"/>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">Nomor Telepon</label>
+                      <div className="relative">
+                        <Phone className="absolute left-4 top-3.5 text-gray-400 w-5 h-5" />
+                        <input type="text" value={profileForm.phone_number} onChange={(e) => setProfileForm({...profileForm, phone_number: e.target.value})} className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-300 focus:border-[#0B2F5E] focus:ring-2 focus:ring-blue-50 outline-none transition-all font-medium text-gray-900 placeholder:text-gray-400"/>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-sm font-bold text-gray-700">Email (Permanen)</label>
+                      <div className="relative">
+                        <Mail className="absolute left-4 top-3.5 text-gray-400 w-5 h-5" />
+                        <input type="email" value={profileForm.email} disabled className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-200 bg-gray-100 text-gray-500 font-medium cursor-not-allowed"/>
+                      </div>
+                    </div>
                   </div>
-                </div>
 
-                <div className="pt-2 flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={isProfileLoading}
-                    className="flex items-center gap-2 bg-[#0B2F5E] text-white px-6 py-2 rounded-full text-sm font-bold hover:bg-blue-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isProfileLoading ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" /> Menyimpan...
-                      </>
-                    ) : (
-                      <>
-                        <Save className="w-4 h-4" /> Simpan Perubahan
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
-
-            {/* 2. CARD EDIT PASSWORD */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-              <div className="flex items-center gap-2 mb-6 border-b border-gray-100 pb-4">
-                <Lock className="w-5 h-5 text-[#0B2F5E]" />
-                <h3 className="font-bold text-gray-800">Keamanan & Password</h3>
-              </div>
-
-              {passwordMessage && (
-                <div className={`mb-4 p-3 rounded-lg flex items-center gap-2 text-sm ${passwordMessage.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
-                   {passwordMessage.type === 'success' ? <CheckCircle2 size={16}/> : <AlertCircle size={16}/>}
-                   {passwordMessage.text}
-                </div>
-              )}
-
-              <form onSubmit={handleUpdatePassword} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Password Saat Ini</label>
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-[#0B2F5E] transition-all outline-none text-sm"
-                    placeholder="Masukan password lama"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Password Baru</label>
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-[#0B2F5E] transition-all outline-none text-sm"
-                      placeholder="Minimal 6 karakter"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Konfirmasi Password</label>
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-100 focus:border-[#0B2F5E] transition-all outline-none text-sm"
-                      placeholder="Ulangi password baru"
-                    />
-                  </div>
-                </div>
-
-                {/* Toggle Show Password */}
-                <div className="flex items-center gap-2">
-                    <button 
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="text-xs text-gray-500 hover:text-[#0B2F5E] flex items-center gap-1"
-                    >
-                        {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                        {showPassword ? "Sembunyikan Password" : "Lihat Password"}
+                  <div className="mt-10 flex justify-end">
+                    <button type="submit" disabled={loading} className="bg-[#0B2F5E] text-white px-8 py-3.5 rounded-xl font-bold hover:bg-[#09254A] shadow-lg shadow-blue-900/20 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                      {loading ? <Loader2 className="animate-spin w-5 h-5"/> : <Save className="w-5 h-5"/>}
+                      Simpan Perubahan
                     </button>
-                </div>
+                  </div>
+                </form>
+              </div>
+            )}
 
-                <div className="pt-2 flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={isPasswordLoading}
-                    className="flex items-center gap-2 bg-white border border-gray-300 text-gray-700 px-6 py-2 rounded-full text-sm font-bold hover:bg-gray-50 transition-colors disabled:opacity-50"
-                  >
-                    {isPasswordLoading ? (
-                      <>
-                         <Loader2 className="w-4 h-4 animate-spin" /> Memproses...
-                      </>
-                    ) : (
-                      "Ganti Password"
-                    )}
-                  </button>
+            {/* TAB GANTI PASSWORD (UPDATED DENGAN TOGGLE MATA) */}
+            {activeTab === "password" && (
+              <div className="bg-white rounded-3xl shadow-lg border border-gray-100 p-6 md:p-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                <div className="flex justify-between items-center mb-8 border-b border-gray-100 pb-6">
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900">Keamanan</h2>
+                        <p className="text-gray-500 text-sm mt-1">Perbarui kata sandi Anda secara berkala</p>
+                    </div>
                 </div>
-              </form>
-            </div>
+                
+                <form onSubmit={handleChangePassword} className="max-w-lg">
+                  <div className="space-y-6">
+                    
+                    {/* Password Lama */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">Password Saat Ini</label>
+                      <div className="relative">
+                        <input 
+                            type={showCurrentPassword ? "text" : "password"} 
+                            required 
+                            value={passForm.current_password} 
+                            onChange={(e) => setPassForm({...passForm, current_password: e.target.value})} 
+                            className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-[#0B2F5E] focus:ring-2 focus:ring-blue-50 outline-none transition-all font-medium text-gray-900" 
+                            placeholder="Masukkan password lama"
+                        />
+                        <button type="button" onClick={() => setShowCurrentPassword(!showCurrentPassword)} className="absolute right-4 top-3.5 text-gray-400 hover:text-gray-600 transition-colors">
+                            {showCurrentPassword ? <EyeOff size={20}/> : <Eye size={20}/>}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Password Baru */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">Password Baru</label>
+                      <div className="relative">
+                        <input 
+                            type={showNewPassword ? "text" : "password"} 
+                            required 
+                            value={passForm.new_password} 
+                            onChange={(e) => setPassForm({...passForm, new_password: e.target.value})} 
+                            className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-[#0B2F5E] focus:ring-2 focus:ring-blue-50 outline-none transition-all font-medium text-gray-900" 
+                            placeholder="Minimal 8 karakter"
+                        />
+                        <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-4 top-3.5 text-gray-400 hover:text-gray-600 transition-colors">
+                            {showNewPassword ? <EyeOff size={20}/> : <Eye size={20}/>}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Konfirmasi Password */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-gray-700">Konfirmasi Password Baru</label>
+                      <div className="relative">
+                        <input 
+                            type={showConfirmPassword ? "text" : "password"} 
+                            required 
+                            value={passForm.new_password_confirmation} 
+                            onChange={(e) => setPassForm({...passForm, new_password_confirmation: e.target.value})} 
+                            className="w-full px-4 py-3 rounded-xl border border-gray-300 focus:border-[#0B2F5E] focus:ring-2 focus:ring-blue-50 outline-none transition-all font-medium text-gray-900" 
+                            placeholder="Ulangi password baru"
+                        />
+                        <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-4 top-3.5 text-gray-400 hover:text-gray-600 transition-colors">
+                            {showConfirmPassword ? <EyeOff size={20}/> : <Eye size={20}/>}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-10">
+                    <button type="submit" disabled={loading} className="bg-[#F57C00] text-white px-8 py-3.5 rounded-xl font-bold hover:bg-[#E65100] shadow-lg shadow-orange-500/20 active:scale-95 transition-all flex items-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                      {loading ? <Loader2 className="animate-spin w-5 h-5"/> : <Lock className="w-5 h-5"/>}
+                      Update Password
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
 
           </div>
         </div>

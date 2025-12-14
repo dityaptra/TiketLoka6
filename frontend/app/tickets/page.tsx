@@ -11,10 +11,11 @@ import {
   AlertCircle,
   MapPin,
   Hash,
-  Search, // Pastikan ikon Search diimpor
+  Search,
   Clock,
   CheckCircle2,
   XCircle,
+  CreditCard,
 } from "lucide-react";
 import { Booking } from "@/types";
 import { useAuth } from "@/context/AuthContext";
@@ -151,30 +152,27 @@ export default function MyTicketsPage() {
               </p>
             </div>
 
-            {/* --- SEARCH BAR DENGAN IKON --- */}
+            {/* SEARCH BAR */}
             <div className="relative w-full md:w-80">
-              {/* 1. Wrapper Ikon: Tambahkan z-10 agar ikon muncul di atas background input */}
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
                 <Search className="h-5 w-5 text-blue-200" />
               </div>
-
               <input
                 type="text"
                 className="block w-full pl-10 pr-3 py-3 border-none rounded-xl leading-5 bg-white/10 text-white placeholder-blue-200 focus:outline-none focus:bg-white/20 focus:ring-2 focus:ring-[#F57C00] transition-all sm:text-sm shadow-inner"
-                // Catatan: Saya menghapus 'backdrop-blur-sm' agar tidak ada efek "smudge" atau kotak buram
                 placeholder="Cari lokasi atau kode..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            {/* --- END SEARCH BAR --- */}
           </div>
 
           {/* Filter Tabs */}
           {!loading && token && allTickets.length > 0 && (
             <div className="flex flex-wrap gap-2">
               <TabButton id="all" label="Semua" count={allTickets.length} />
-              <TabButton id="success" label="Berhasil" />
+              {/* Sesuaikan ID tab dengan status dari backend (biasanya lowercase) */}
+              <TabButton id="paid" label="Berhasil" /> 
               <TabButton id="pending" label="Menunggu" />
               <TabButton id="cancelled" label="Dibatalkan" />
             </div>
@@ -234,34 +232,52 @@ export default function MyTicketsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredTickets.map((ticket, idx) => {
+              // --- PERBAIKAN LOGIKA STATUS WARNA & TYPE ERROR ---
               let statusColor = "bg-gray-100 text-gray-600 border-gray-200";
               let StatusIcon = Clock;
 
-              if (ticket.parent_status === "success") {
+              // Cek status "success" ATAU "paid" sesuai backend
+              if (ticket.parent_status === "success" || ticket.parent_status === "paid") {
                 statusColor = "bg-green-50 text-green-700 border-green-200";
                 StatusIcon = CheckCircle2;
               } else if (ticket.parent_status === "pending") {
                 statusColor = "bg-orange-50 text-orange-700 border-orange-200";
                 StatusIcon = Clock;
-              } else if (
-                ticket.parent_status === "cancelled" ||
-                ticket.parent_status === "failed"
-              ) {
+              } else if (ticket.parent_status === "cancelled") { 
+                // HAPUS check "failed" jika Type Booking tidak memilikinya
                 statusColor = "bg-red-50 text-red-700 border-red-200";
                 StatusIcon = XCircle;
               }
 
+              // --- LOGIKA UTAMA: TENTUKAN URL TUJUAN ---
+              const isPending = ticket.parent_status === "pending";
+              const isCancelled = ticket.parent_status === "cancelled";
+
+              // Jika pending -> ke halaman bayar
+              // Jika cancelled -> tetap di halaman atau prevent default
+              // Jika success/paid -> ke halaman tiket
+              const targetUrl = isPending
+                ? `/payment/${ticket.parent_code}`
+                : isCancelled
+                ? "#"
+                : `/tickets/${ticket.parent_code}?index=${ticket.relative_index}`;
+
               return (
                 <Link
-                  href={`/tickets/${ticket.parent_code}?index=${ticket.relative_index}`}
+                  href={targetUrl}
                   key={`${ticket.parent_id}-${ticket.id}-${idx}`}
-                  className="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl hover:border-blue-100 transition-all duration-300 flex flex-col"
+                  className={`group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300 flex flex-col ${
+                    isPending ? "hover:border-orange-300" : "hover:border-blue-100"
+                  }`}
+                  onClick={(e) => {
+                      if(isCancelled) e.preventDefault();
+                  }}
                 >
                   <div className="relative h-48 w-full overflow-hidden">
                     <img
                       src={getImageUrl(ticket.destination.image_url)}
                       alt={ticket.destination.name}
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                      className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 ${isCancelled ? 'grayscale' : ''}`}
                       onError={(e) => {
                         (e.target as HTMLImageElement).src =
                           "https://images.unsplash.com/photo-1596423348633-8472df3b006c?auto=format&fit=crop&w=800";
@@ -304,15 +320,25 @@ export default function MyTicketsPage() {
                     <div className="pt-4 border-t border-gray-100 flex items-center justify-between mt-auto">
                       <div className="flex flex-col">
                         <span className="text-xs text-gray-400">
-                          Total Harga
+                          {isPending ? "Total Tagihan" : "Total Harga"}
                         </span>
                         <span className="font-bold text-[#0B2F5E] text-sm">
                           {formatIDR(ticket.price * ticket.quantity)}
                         </span>
                       </div>
-                      <span className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-[#0B2F5E] group-hover:bg-[#F57C00] group-hover:text-white transition-colors">
-                        <ChevronRight className="w-5 h-5" />
-                      </span>
+                      
+                      {/* Tombol Action */}
+                      {isPending ? (
+                        <span className="px-4 py-2 rounded-lg bg-orange-100 text-orange-700 text-xs font-bold flex items-center gap-1 group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                           <CreditCard className="w-3.5 h-3.5" /> Bayar
+                        </span>
+                      ) : isCancelled ? (
+                         <span className="text-xs text-gray-400 font-medium">Dibatalkan</span>
+                      ) : (
+                        <span className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-[#0B2F5E] group-hover:bg-[#F57C00] group-hover:text-white transition-colors">
+                          <ChevronRight className="w-5 h-5" />
+                        </span>
+                      )}
                     </div>
                   </div>
                 </Link>

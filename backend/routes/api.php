@@ -33,7 +33,11 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
-    Route::put('/profile', [ProfileController::class, 'update']);
+    // --- MANAJEMEN PROFILE USER ---
+    // 1. Update Biodata & Foto (Pakai POST karena FormData upload file)
+    Route::post('/profile', [ProfileController::class, 'update']);
+    // 2. Update Password
+    Route::put('/password', [ProfileController::class, 'updatePassword']);
 
     // Cart (Keranjang)
     Route::get('/cart', [CartController::class, 'index']);
@@ -45,7 +49,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/buy-now', [BookingController::class, 'buyNow']);
     Route::get('/my-bookings', [BookingController::class, 'myBookings']);
     Route::get('/bookings/{booking_code}', [BookingController::class, 'show']);
-
+    Route::post('/bookings/{booking_code}/cancel', [BookingController::class, 'cancel']);
+    Route::post('/bookings/{booking_code}/pay', [BookingController::class, 'markAsPaid']);
     // Kirim Review
     Route::post('/reviews', [ReviewController::class, 'store']);
 
@@ -76,7 +81,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/destinations/{id}/upload-gallery', [DestinationController::class, 'uploadGallery']);
         Route::delete('/destinations/gallery/{image_id}', [DestinationController::class, 'deleteGalleryImage']);
 
-        // 4. INCLUSIONS & ADDONS (YANG ANDA MINTA)
+        // 4. INCLUSIONS & ADDONS
         // Tambah Fasilitas
         Route::post('/destinations/{id}/inclusions', [DestinationController::class, 'storeInclusion']);
         // Hapus Fasilitas

@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useCartContext } from '@/context/CartContext'; 
+import { useNotification } from '@/context/NotificationContext'; 
 import Navbar from '@/components/layout/Navbar'; 
 import { 
-    MapPin, Image as ImageIcon, Loader2, Calendar, ArrowLeft, 
+    MapPin, Loader2, Calendar, ArrowLeft, 
     Minus, Plus, X, CheckCircle, Check, Tag, Star, 
-    User as UserIcon, Camera, ChevronLeft, ChevronRight, Info 
+    User as UserIcon, Camera, ChevronLeft, ChevronRight, Info, 
+    ShoppingCart 
 } from 'lucide-react';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
@@ -25,7 +28,17 @@ interface Destination {
     images?: { id: number; image_path: string }[]; 
     inclusions?: { id: number; name: string }[]; 
     addons?: { id: number; name: string; price: number }[]; 
-    reviews?: any[];
+    reviews?: {
+        id: number;
+        rating: number;
+        comment: string;
+        created_at: string;
+        image?: string;
+        user?: {
+            name: string;
+            avatar_url?: string; // Tambahan untuk Avatar
+        };
+    }[];
 }
 
 const getImageUrl = (url: string | null) => {
@@ -43,7 +56,6 @@ const formatDate = (date: string) => new Date(date).toLocaleDateString('id-ID', 
 export default function EventDetailPage() {
     const params = useParams();
     const router = useRouter();
-    const { token } = useAuth();
     
     const [destination, setDestination] = useState<Destination | null>(null);
     const [loading, setLoading] = useState(true);
@@ -80,10 +92,10 @@ export default function EventDetailPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
                     <div className="lg:col-span-2 space-y-10">
                         <DescriptionSection destination={destination} />
-                        <ReviewSection destination={destination} token={token} onRefresh={fetchDetail} />
+                        <ReviewSection destination={destination} onRefresh={fetchDetail} />
                     </div>
                     <div className="relative h-full">
-                        <BookingCard destination={destination} token={token} />
+                        <BookingCard destination={destination} />
                     </div>
                 </div>
             </div>
@@ -108,28 +120,21 @@ function HeaderSection({ destination, onBack }: { destination: Destination, onBa
     );
 }
 
-// --- PERBAIKAN DI SINI (GALLERY SECTION) ---
 function GallerySection({ destination }: { destination: Destination }) {
     const [isOpen, setIsOpen] = useState(false);
     const [idx, setIdx] = useState(0);
-    
-    // Gabung foto utama + galeri
     const allImages = [{ id: 0, image_path: destination.image_url }, ...(destination.images || [])].filter(img => img.image_path);
     const displayImages = allImages.slice(0, 5);
     const remainingCount = allImages.length - 5;
 
     return (
         <>
-            {/* Bento Grid */}
             <div className="h-[300px] md:h-[480px] w-full mb-10 grid grid-cols-1 md:grid-cols-4 grid-rows-2 gap-2 rounded-3xl overflow-hidden shadow-sm">
                 {displayImages.map((img, i) => {
-                     // FIX: Overlay muncul di foto ke-5 (index 4)
                      const isLastItem = i === 4; 
                      return (
                         <div key={i} onClick={() => { setIdx(i); setIsOpen(true); }} className={`relative bg-gray-100 cursor-pointer overflow-hidden group ${i === 0 ? 'md:col-span-2 md:row-span-2' : ''}`}>
                             <Image src={getImageUrl(img.image_path)} alt="Gallery" fill className="object-cover transition duration-700 group-hover:scale-110" unoptimized />
-                            
-                            {/* Overlay Pojok Kanan Bawah */}
                             {isLastItem && remainingCount > 0 && (
                                 <div className="absolute inset-0 bg-black/60 transition hover:bg-black/70 backdrop-blur-[2px] flex flex-col justify-end items-end p-4">
                                     <div className="text-white text-right">
@@ -141,10 +146,7 @@ function GallerySection({ destination }: { destination: Destination }) {
                         </div>
                      )
                 })}
-                {displayImages.length === 0 && <div className="md:col-span-4 md:row-span-2 bg-gray-100 flex items-center justify-center text-gray-400">Belum ada foto</div>}
             </div>
-
-            {/* Lightbox Modal */}
             {isOpen && (
                 <div className="fixed inset-0 z-[100] bg-black/95 flex items-center justify-center animate-in fade-in" onClick={() => setIsOpen(false)}>
                     <button onClick={() => setIsOpen(false)} className="absolute top-6 right-6 text-white p-2 z-10"><X className="w-8 h-8"/></button>
@@ -153,7 +155,6 @@ function GallerySection({ destination }: { destination: Destination }) {
                         <Image src={getImageUrl(allImages[idx].image_path)} alt="Full" fill className="object-contain" unoptimized />
                     </div>
                     <button onClick={(e) => { e.stopPropagation(); setIdx((idx + 1) % allImages.length); }} className="absolute right-4 text-white p-3 z-10"><ChevronRight className="w-8 h-8"/></button>
-                    <div className="absolute bottom-6 text-white bg-black/50 px-4 py-1 rounded-full text-sm">{idx + 1} / {allImages.length}</div>
                 </div>
             )}
         </>
@@ -181,11 +182,12 @@ function DescriptionSection({ destination }: { destination: Destination }) {
     );
 }
 
-function ReviewSection({ destination, token, onRefresh }: { destination: Destination, token: string | null, onRefresh: () => void }) {
+function ReviewSection({ destination, onRefresh }: { destination: Destination, onRefresh: () => void }) {
+    const { token } = useAuth();
+    const router = useRouter();
     const [form, setForm] = useState({ rating: 0, comment: '', image: null as File | null });
     const [preview, setPreview] = useState<string | null>(null);
     const [submitting, setSubmitting] = useState(false);
-    const router = useRouter();
 
     const submit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -242,16 +244,26 @@ function ReviewSection({ destination, token, onRefresh }: { destination: Destina
             <div className="space-y-6">
                 {destination.reviews?.length ? destination.reviews.map((r: any) => (
                     <div key={r.id} className="flex gap-4 pb-6 border-b border-gray-100 last:border-0">
-                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-400 border border-gray-200 shrink-0"><UserIcon className="w-6 h-6"/></div>
+                        {/* --- AVATAR USER --- */}
+                        <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-400 border border-gray-200 shrink-0 relative overflow-hidden">
+                            {r.user?.avatar_url ? (
+                                <Image 
+                                    src={getImageUrl(r.user.avatar_url)} 
+                                    alt={r.user.name} 
+                                    fill 
+                                    className="object-cover"
+                                    unoptimized
+                                />
+                            ) : (
+                                <UserIcon className="w-6 h-6"/>
+                            )}
+                        </div>
+                        {/* ------------------- */}
                         <div>
                             <div className="flex items-center gap-2 mb-1"><h4 className="font-bold text-gray-900">{r.user?.name || 'Pengunjung'}</h4><span className="text-xs text-gray-400">{formatDate(r.created_at)}</span></div>
                             <div className="flex mb-2">{[...Array(5)].map((_, i) => <Star key={i} className={`w-3 h-3 ${i < r.rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-200'}`}/>)}</div>
                             <p className="text-gray-700 text-sm bg-gray-50 p-3 rounded-xl rounded-tl-none">"{r.comment}"</p>
-                            {r.image && (
-                                <div className="mt-3 w-32 h-24 relative rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:opacity-90">
-                                    <Image src={getImageUrl(r.image)} alt="Review" fill className="object-cover" unoptimized />
-                                </div>
-                            )}
+                            {r.image && <div className="mt-3 w-32 h-24 relative rounded-lg overflow-hidden border border-gray-200 cursor-pointer hover:opacity-90"><Image src={getImageUrl(r.image)} alt="Review" fill className="object-cover" unoptimized /></div>}
                         </div>
                     </div>
                 )) : <p className="text-center text-gray-500 italic py-4">Belum ada ulasan.</p>}
@@ -260,18 +272,68 @@ function ReviewSection({ destination, token, onRefresh }: { destination: Destina
     );
 }
 
-function BookingCard({ destination, token }: { destination: Destination, token: string | null }) {
+// --- 4. BOOKING CARD (DENGAN REDIRECT KE PAYMENT) ---
+function BookingCard({ destination }: { destination: Destination }) {
+    const { token } = useAuth();
+    const router = useRouter();
+    
     const [date, setDate] = useState('');
     const [qty, setQty] = useState(1);
     const [addons, setAddons] = useState<number[]>([]);
     const [modalOpen, setModalOpen] = useState(false);
     const [processing, setProcessing] = useState(false);
-    const router = useRouter();
+    
+    // CONTEXT HOOKS
+    const { refreshCart } = useCartContext(); 
+    const { addNotification } = useNotification(); 
+
+    const [addingToCart, setAddingToCart] = useState(false); 
 
     const total = (destination.price * qty) + (addons.reduce((acc, id) => acc + (destination.addons?.find(a => a.id === id)?.price || 0), 0) * qty);
 
     const toggleAddon = (id: number) => setAddons(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
+    // LOGIKA ADD TO CART
+    const handleAddToCart = async () => {
+        if (!token) {
+            toast.error("Silakan login dulu");
+            return router.push('/login');
+        }
+        if (!date) {
+            return toast.error('Pilih tanggal kunjungan!');
+        }
+
+        setAddingToCart(true);
+        try {
+            const res = await fetch('http://127.0.0.1:8000/api/cart', {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json', 
+                    'Authorization': `Bearer ${token}` 
+                },
+                body: JSON.stringify({ 
+                    destination_id: destination.id, 
+                    quantity: qty, 
+                    visit_date: date, 
+                    addons: addons 
+                })
+            });
+            const json = await res.json();
+            
+            if (res.ok) {
+                toast.success('Berhasil masuk keranjang!');
+                await refreshCart(); 
+            } else {
+                toast.error(json.message || 'Gagal menambahkan ke keranjang');
+            }
+        } catch (error) {
+            toast.error('Gagal menghubungi server');
+        } finally {
+            setAddingToCart(false);
+        }
+    };
+
+    // LOGIKA CHECKOUT (BELI LANGSUNG)
     const handleCheckout = async () => {
         setProcessing(true);
         try {
@@ -280,9 +342,27 @@ function BookingCard({ destination, token }: { destination: Destination, token: 
                 body: JSON.stringify({ destination_id: destination.id, quantity: qty, visit_date: date, addons: addons, payment_method: 'qris' })
             });
             const json = await res.json();
-            if (res.ok) { toast.success('Berhasil!'); router.push(`/tickets/${json.booking_code}`); } 
-            else toast.error(json.message || 'Gagal');
-        } catch { toast.error('Error server'); } finally { setProcessing(false); }
+            
+            if (res.ok) { 
+                toast.success('Pesanan dibuat!'); 
+                
+                // NOTIFIKASI PEMESANAN
+                addNotification(
+                    'transaction',
+                    'Menunggu Pembayaran',
+                    `Pesanan ${destination.name} berhasil dibuat. Silakan selesaikan pembayaran.`
+                );
+
+                // --- PENTING: REDIRECT KE HALAMAN PEMBAYARAN ---
+                router.push(`/payment/${json.booking_code}`); 
+            } else {
+                toast.error(json.message || 'Gagal');
+            }
+        } catch { 
+            toast.error('Error server'); 
+        } finally { 
+            setProcessing(false); 
+        }
     };
 
     return (
@@ -294,7 +374,28 @@ function BookingCard({ destination, token }: { destination: Destination, token: 
                 {destination.addons?.length! > 0 && <div className="space-y-2"><label className="text-xs font-bold text-gray-700 flex gap-1 items-center"><Tag className="w-3 h-3"/> Add-ons</label>{destination.addons?.map(a => (<div key={a.id} onClick={() => toggleAddon(a.id)} className={`p-3 rounded-xl border flex justify-between items-center cursor-pointer transition select-none ${addons.includes(a.id) ? 'border-blue-500 bg-blue-50' : 'hover:border-gray-300'}`}><div className="flex gap-2 items-center"><div className={`w-4 h-4 rounded border flex items-center justify-center ${addons.includes(a.id) ? 'bg-blue-500 border-blue-500' : ''}`}>{addons.includes(a.id) && <Check className="w-3 h-3 text-white"/>}</div><span className="text-sm font-medium text-gray-700">{a.name}</span></div><span className="text-sm font-bold text-[#F57C00]">+Rp {Number(a.price).toLocaleString('id-ID')}</span></div>))}</div>}
                 <div className="flex justify-between pt-4 border-t border-gray-100"><span className="font-medium text-gray-500">Total</span><span className="font-extrabold text-xl text-gray-900">Rp {total.toLocaleString('id-ID')}</span></div>
             </div>
-            <button onClick={() => { if(!token) { toast.error("Login dulu"); return router.push('/login'); } if(!date) return toast.error('Pilih tanggal!'); setModalOpen(true); }} className="w-full bg-[#0B2F5E] text-white py-3.5 rounded-xl font-bold hover:bg-[#09254A] shadow-lg active:scale-[0.98]">Pesan Sekarang</button>
+            
+            <div className="flex gap-3">
+                <button 
+                    onClick={handleAddToCart}
+                    disabled={addingToCart}
+                    className="flex-1 flex items-center justify-center gap-2 border-2 border-[#F57C00] text-[#F57C00] py-3.5 rounded-xl font-bold hover:bg-[#F57C00] hover:text-white transition-all duration-300 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                    {addingToCart ? <Loader2 className="w-5 h-5 animate-spin"/> : <ShoppingCart className="w-5 h-5 group-hover:text-white transition-colors"/>}
+                    <span className="text-sm md:text-base">Keranjang</span>
+                </button>
+
+                <button 
+                    onClick={() => { 
+                        if(!token) { toast.error("Login dulu"); return router.push('/login'); } 
+                        if(!date) return toast.error('Pilih tanggal!'); 
+                        setModalOpen(true); 
+                    }} 
+                    className="flex-[1.5] bg-[#0B2F5E] text-white py-3.5 rounded-xl font-bold hover:bg-[#09254A] shadow-lg shadow-blue-900/20 active:scale-[0.98] transition-all duration-300 text-sm md:text-base"
+                >
+                    Pesan Sekarang
+                </button>
+            </div>
 
             {modalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
