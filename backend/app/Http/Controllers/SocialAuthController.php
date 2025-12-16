@@ -13,8 +13,13 @@ class SocialAuthController extends Controller
     // Parameter $provider akan otomatis terisi 'google' atau 'facebook' dari URL
     public function redirect($provider)
     {
+        // Tentukan URL Callback secara manual sesuai Provider
+        // Pastikan URL ini SAMA PERSIS dengan yang di Google Console
+        $redirectUrl = 'http://127.0.0.1:8000/auth/' . $provider . '/callback';
+
         return Socialite::driver($provider)
-            ->with(['prompt' => 'select_account']) // <--- Tambahkan Baris Ini
+            ->redirectUrl($redirectUrl) // <--- KITA PAKSA DI SINI
+            ->with(['prompt' => 'select_account'])
             ->redirect();
     }
 
