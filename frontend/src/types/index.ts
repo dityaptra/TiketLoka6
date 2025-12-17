@@ -52,6 +52,7 @@ export interface Review {
 
 // --- DESTINATION ---
 export interface Destination {
+  updated_at: Date;
   id: number;
   name: string;
   slug: string;

@@ -1,64 +1,64 @@
-"use client";
+import { Metadata, ResolvingMetadata } from "next";
+import EventDetailView from "@/src/components/views/EventDetailView"; 
+import axiosInstance from "@/src/lib/axios"; 
+import { getImageUrl } from "@/src/lib/utlis";
 
-import { useParams, useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+// ✅ UPDATE NEXT.JS 15: params harus Promise
+type Props = {
+  params: Promise<{ slug: string }>;
+};
 
-// Import Components UI (yang sudah dipisah sebelumnya)
-import Navbar from "@/src/components/layout/Navbar";
-import HeaderSection from "@/src/components/events/detail/HeaderSection";
-import GallerySection from "@/src/components/events/detail/GallerySection";
-import DescriptionSection from "@/src/components/events/detail/DescriptionSection";
-import ReviewSection from "@/src/components/events/detail/ReviewSection";
-import BookingCard from "@/src/components/events/detail/BookingCard";
+// 1. Fungsi Fetch Data Khusus Server
+async function getDestinationSEO(slug: string) {
+  try {
+    const res = await axiosInstance.get(`/destinations/${slug}`);
+    return res.data.data;
+  } catch (error) {
+    return null;
+  }
+}
 
-// Import Custom Hook Baru
-import { useDestinationDetail } from "@/src/hooks/useDestinationDetail";
-
-export default function EventDetailPage() {
-  const params = useParams();
-  const router = useRouter();
+// 2. GENERATE METADATA
+export async function generateMetadata(
+  { params }: Props,
+  parent: ResolvingMetadata
+): Promise<Metadata> {
+  // ✅ UPDATE NEXT.JS 15: Await params dulu!
+  const { slug } = await params;
   
-  // PANGGIL HOOK DI SINI (1 baris menggantikan puluhan baris logika fetch!)
-  // Kita ambil 'refetch' juga untuk pass ke ReviewSection
-  const { destination, loading, refetch } = useDestinationDetail(params.slug as string);
+  const destination = await getDestinationSEO(slug);
 
-  if (loading)
-    return (
-      <div className="min-h-screen flex justify-center items-center bg-white">
-        <Loader2 className="animate-spin text-[#0B2F5E] w-10 h-10" />
-      </div>
-    );
-  
-  if (!destination) return null; // Atau tampilkan komponen 404 Not Found
+  if (!destination) {
+    return { title: "Event Tidak Ditemukan" };
+  }
 
-  return (
-    <main className="min-h-screen bg-white text-gray-800 pb-20 font-sans">
-      <Navbar />
-      <div className="max-w-7xl mx-auto px-4 pt-24 pb-8">
-        
-        <HeaderSection 
-            destination={destination} 
-            onBack={() => router.back()} 
-        />
-        
-        <GallerySection destination={destination} />
+  const previousImages = (await parent).openGraph?.images || [];
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
-          <div className="lg:col-span-2 space-y-10">
-            <DescriptionSection destination={destination} />
-            
-            {/* Kirim fungsi 'refetch' ke sini agar setelah komen, data reload otomatis */}
-            <ReviewSection 
-                destination={destination} 
-                onRefresh={refetch} 
-            />
-          </div>
-          
-          <div className="relative h-full">
-            <BookingCard destination={destination} />
-          </div>
-        </div>
-      </div>
-    </main>
-  );
+  return {
+    title: `${destination.name} - Tiket & Info`,
+    description: destination.description ? destination.description.substring(0, 160) : "Detail event di TiketLoka",
+    openGraph: {
+      title: destination.name,
+      description: destination.description?.substring(0, 150),
+      url: `https://tiketloka.com/events/${slug}`,
+      images: [
+        {
+          url: getImageUrl(destination.image_url),
+          width: 800,
+          height: 600,
+          alt: destination.name,
+        },
+        ...previousImages,
+      ],
+    },
+  };
+}
+
+// 3. MAIN PAGE (Server Component)
+export default async function Page({ params }: Props) {
+  // ✅ UPDATE NEXT.JS 15: Await params dulu!
+  const { slug } = await params;
+
+  // Kirim slug yang sudah di-await ke Client Component
+  return <EventDetailView slug={slug} />;
 }

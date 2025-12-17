@@ -2,6 +2,28 @@
 @import 'swiper/css';
 @import 'swiper/css/effect-fade';
 
+/* Tambahkan ini di paling bawah atau atas */
+html {
+  /* Paksa warna background level paling dasar agar tidak ada celah hitam/putih */
+  background-color: #F9FAFB; /* Ini kode hex untuk bg-gray-50 */
+}
+
+html, body {
+  /* Pastikan tinggi penuh */
+  height: 100%;
+  width: 100%;
+  
+  /* MATIKAN EFEK PANTULAN (BOUNCE) */
+  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
+}
+
+/* Opsional: Agar scrollbar tidak merusak pemandangan tapi tetap bisa scroll */
+body {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch; /* Agar scroll di iOS tetap smooth/licin */
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -26,3 +48,4 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
