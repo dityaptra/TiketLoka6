@@ -3,16 +3,14 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "@/src/context/AuthContext";
 import { Plus, Trash2, Loader2, Save } from "lucide-react";
-import Swal from "sweetalert2"; // 1. Import SweetAlert
+import Swal from "sweetalert2"; 
 
-interface Category {
-  id: number;
-  name: string;
-  slug: string;
-}
+// Import Service & Types
+import { adminService } from "@/src/services/adminService"; // <--- Service
+import { Category } from "@/src/types";
 
 export default function AdminCategories() {
-  const { token } = useAuth();
+  const { token } = useAuth(); // Token otomatis dihandle axios, tapi kita butuh validasi login
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -20,67 +18,63 @@ export default function AdminCategories() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // --- FETCH DATA ---
   async function fetchCategories() {
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/categories");
-      const json = await res.json();
-      setCategories(json.data || []);
+      const data = await adminService.getAllCategories();
+      setCategories(data);
     } catch (err) {
       console.error(err);
+      // Opsional: Toast error saat load
     } finally {
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    fetchCategories();
-  }, []);
+    if (token) {
+      fetchCategories();
+    }
+  }, [token]);
 
+  // --- HANDLER: ADD ---
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/admin/categories", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ name: newName }),
-      });
-      const json = await res.json();
+      // Panggil Service
+      await adminService.createCategory(newName);
+      
+      setNewName("");
+      fetchCategories(); // Refresh data
 
-      if (res.ok) {
-        setNewName("");
-        fetchCategories();
-        // 2. SweetAlert Sukses Tambah
-        Swal.fire({
-          icon: "success",
-          title: "Berhasil!",
-          text: "Kategori baru telah ditambahkan.",
-          showConfirmButton: false,
-          timer: 1500,
-        });
-      } else {
-        // SweetAlert Gagal
-        Swal.fire({
-          icon: "error",
-          title: "Gagal",
-          text: json.message || "Gagal menambahkan kategori.",
-          confirmButtonColor: "#d33",
-        });
-      }
-    } catch (error) {
-      Swal.fire("Error", "Kesalahan koneksi.", "error");
+      // SweetAlert Sukses
+      Swal.fire({
+        icon: "success",
+        title: "Berhasil!",
+        text: "Kategori baru telah ditambahkan.",
+        showConfirmButton: false,
+        timer: 1500,
+      });
+
+    } catch (error: any) {
+      // SweetAlert Gagal
+      Swal.fire({
+        icon: "error",
+        title: "Gagal",
+        text: error.message,
+        confirmButtonColor: "#d33",
+      });
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // --- HANDLER: DELETE ---
   const handleDelete = async (id: number) => {
-    // 3. Konfirmasi Hapus dengan SweetAlert
+    // Konfirmasi Hapus
     const result = await Swal.fire({
       title: "Hapus Kategori?",
       text: "Kategori yang dihapus tidak dapat dikembalikan!",
@@ -97,38 +91,29 @@ export default function AdminCategories() {
 
     setDeletingId(id);
     try {
-      const res = await fetch(
-        `http://127.0.0.1:8000/api/admin/categories/${id}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${token}` },
-        }
-      );
-      if (res.ok) {
-        setCategories((prev) => prev.filter((c) => c.id !== id));
-        // Notifikasi Sukses Hapus
-        Swal.fire({
-          icon: "success",
-          title: "Terhapus!",
-          text: "Kategori berhasil dihapus.",
-          showConfirmButton: false,
-          timer: 1500,
-        });
-      } else {
-        const json = await res.json();
-        Swal.fire(
-          "Gagal",
-          json.message || "Gagal menghapus kategori.",
-          "error"
-        );
-      }
-    } catch (error) {
-      Swal.fire("Error", "Kesalahan koneksi.", "error");
+      // Panggil Service
+      await adminService.deleteCategory(id);
+      
+      // Update State Lokal (Optimistic UI)
+      setCategories((prev) => prev.filter((c) => c.id !== id));
+
+      // SweetAlert Sukses
+      Swal.fire({
+        icon: "success",
+        title: "Terhapus!",
+        text: "Kategori berhasil dihapus.",
+        showConfirmButton: false,
+        timer: 1500,
+      });
+
+    } catch (error: any) {
+      Swal.fire("Gagal", error.message, "error");
     } finally {
       setDeletingId(null);
     }
   };
 
+  // --- RENDER ---
   if (loading)
     return (
       <div className="flex h-96 items-center justify-center">
@@ -138,9 +123,7 @@ export default function AdminCategories() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-[#0B2F5E] mb-6">
-        Kelola Kategori
-      </h1>
+      <h1 className="text-2xl font-bold text-[#0B2F5E] mb-6">Kelola Kategori</h1>
 
       {/* Form Tambah */}
       <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8 max-w-2xl">
@@ -161,11 +144,7 @@ export default function AdminCategories() {
             disabled={isSubmitting || !newName}
             className="bg-[#0B2F5E] text-white px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-[#09254A] transition flex items-center gap-2 disabled:opacity-50"
           >
-            {isSubmitting ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <Save size={16} />
-            )}{" "}
+            {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
             Simpan
           </button>
         </form>
@@ -185,26 +164,16 @@ export default function AdminCategories() {
           <tbody className="divide-y divide-gray-100">
             {categories.map((cat, index) => (
               <tr key={cat.id} className="hover:bg-blue-50/50">
-                <td className="px-6 py-4 text-center font-bold text-gray-600">
-                  {index + 1}
-                </td>
-                <td className="px-6 py-4 font-bold text-[#0B2F5E]">
-                  {cat.name}
-                </td>
-                <td className="px-6 py-4 text-gray-600 font-mono text-xs">
-                  {cat.slug}
-                </td>
+                <td className="px-6 py-4 text-center font-bold text-gray-600">{index + 1}</td>
+                <td className="px-6 py-4 font-bold text-[#0B2F5E]">{cat.name}</td>
+                <td className="px-6 py-4 text-gray-600 font-mono text-xs">{cat.slug}</td>
                 <td className="px-6 py-4 text-center">
                   <button
                     onClick={() => handleDelete(cat.id)}
                     disabled={deletingId === cat.id}
                     className="p-2 border border-gray-200 rounded-lg text-red-600 hover:bg-red-50 transition disabled:opacity-50"
                   >
-                    {deletingId === cat.id ? (
-                      <Loader2 size={16} className="animate-spin" />
-                    ) : (
-                      <Trash2 size={16} />
-                    )}
+                    {deletingId === cat.id ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
                   </button>
                 </td>
               </tr>

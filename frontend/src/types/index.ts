@@ -59,10 +59,21 @@ export interface Destination {
   price: number;
   location: string;
   image_url: string;
-  category?: { name: string };
+  
+  // ✅ TAMBAHAN PENTING UNTUK ADMIN:
+  category_id: number;          // Wajib untuk Edit Form
+  is_active: boolean | number;  // Wajib untuk Toggle Status
+  meta_title?: string;          // SEO
+  meta_description?: string;    // SEO
+  meta_keywords?: string;       // SEO
+
+  // Relasi
+  category?: { id: number; name: string };
   images?: { id: number; image_path: string }[];
   inclusions?: { id: number; name: string }[];
   addons?: { id: number; name: string; price: number }[];
+  
+  // Reviews (Opsional)
   reviews?: {
     id: number;
     rating: number;
@@ -103,14 +114,105 @@ export interface Booking {
 }
 
 // --- CART ---
+export interface CartAddon {
+  id: number;
+  name: string;
+  price: number;
+}
+
 export interface CartItem {
   id: number;
-  user_id: number;
-  destination_id: number;
+  destination: {
+    id: number;
+    name: string;
+    price: number;
+    image_url: string;
+    location: string;
+  };
   quantity: number;
   visit_date: string;
-  total_price: number;
-  destination: Destination;
-  // Opsional: Jika cart menyimpan addons yang dipilih
-  addons?: number[]; 
+  addons?: CartAddon[];
+}
+
+export interface CheckoutRequest {
+  cart_ids: number[];
+  payment_method: string;
+}
+
+export interface CheckoutResponse {
+  message: string;
+  booking_code: string;
+  snap_token?: string; // Opsional jika nanti pakai Midtrans Snap
+}
+
+export interface PasswordUpdateData {
+  current_password: string;
+  new_password: string;
+  new_password_confirmation: string;
+}
+
+export interface AdminBooking {
+  id: number;
+  booking_code: string;
+  grand_total: number;
+  status: string;
+  created_at: string;
+  user: {
+    name: string;
+    email: string;
+  };
+  details: {
+    destination: {
+      name: string;
+    };
+    quantity: number;
+  }[];
+}
+
+export interface PaginationMeta {
+  current_page: number;
+  last_page: number;
+  total: number;
+  from: number;
+  to: number;
+  per_page: number;
+}
+
+export interface AdminBookingResponse {
+  data: AdminBooking[];
+  meta: PaginationMeta; // Sesuaikan dengan struktur JSON backend Anda (bisa jadi meta terpisah atau langsung di root)
+}
+
+export interface CreateDestinationInput {
+  name: string;
+  category_id: string; // atau number, sesuaikan dengan form select value
+  description: string;
+  price: string;
+  location: string;
+  image: File | null;
+  meta_title: string;
+  meta_description: string;
+  meta_keywords: string;
+}
+
+export interface UpdateDestinationInput {
+  name: string;
+  category_id: string | number;
+  description: string;
+  price: string | number;
+  location: string;
+  is_active: boolean; // Tambahan status
+  image?: File | null; // Opsional (boleh null jika tidak ganti gambar)
+  meta_title: string;
+  meta_description: string;
+  meta_keywords: string;
+}
+
+export interface DashboardData {
+  total_revenue: number;
+  total_bookings: number;
+  total_tickets_sold: number;
+  total_users: number;
+  chart_revenue: { date: string; total: number }[];
+  chart_popular: { name: string; total: number }[];
 }

@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from './AuthContext';
+// 1. Import Service yang sudah Anda buat
+import { cartService } from '@/src/services/cartService'; 
 
 interface CartContextType {
     cartCount: number;
@@ -15,33 +17,33 @@ const CartContext = createContext<CartContextType>({
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
     const [cartCount, setCartCount] = useState(0);
-    const { token } = useAuth();
+    const { token } = useAuth(); // Kita butuh token untuk trigger useEffect
 
-    // Fungsi untuk cek ulang jumlah keranjang ke API Backend
+    // Fungsi update cart
     const refreshCart = async () => {
+        // Jika user tidak login (token kosong), set keranjang jadi 0
         if (!token) {
             setCartCount(0);
             return;
         }
 
         try {
-            // Asumsi endpoint GET /api/cart mengembalikan daftar item
-            // Pastikan Anda sudah membuat Route GET di Laravel: Route::get('/cart', ...)
-            const res = await fetch('http://127.0.0.1:8000/api/cart', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const json = await res.json();
+            // 2. ✅ CLEAN CODE: Pakai cartService
+            // Tidak perlu lagi tulis header Authorization manual, 
+            // karena sudah diurus oleh axiosInstance di dalam service.
+            const items = await cartService.getCart();
             
-            if (res.ok && json.data) {
-                // Hitung jumlah item
-                setCartCount(json.data.length);
+            // Update jumlah item (pastikan items adalah array)
+            if (Array.isArray(items)) {
+                setCartCount(items.length); 
             }
         } catch (error) {
-            console.error("Gagal memuat keranjang", error);
+            console.error("Gagal sinkronisasi keranjang", error);
+            // Opsional: setCartCount(0) jika error
         }
     };
 
-    // Load data cart saat pertama kali login/buka web
+    // 3. Load data otomatis saat token berubah (Login/Logout)
     useEffect(() => {
         refreshCart();
     }, [token]);

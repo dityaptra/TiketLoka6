@@ -54,16 +54,9 @@ export default function LoginPage() {
   };
 
   const handleSocialLogin = (provider: 'google' | 'facebook') => {
-    // 1. Ambil URL dari .env atau default localhost
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
-    
-    // 2. Hapus '/api' agar mengarah ke route web.php Laravel
-    // Contoh: http://localhost:8000/api -> http://localhost:8000
-    const baseURL = API_URL.replace('/api', ''); 
-    
-    // 3. Redirect ke Laravel Socialite
-    window.location.href = `${baseURL}/auth/${provider}`;
-  };
+  // ✅ BERSIH: Logic URL sudah pindah ke service
+  window.location.href = authService.getSocialLoginUrl(provider);
+};
 
   // Styling Variables
   const inputWrapperClass = "relative flex items-center";

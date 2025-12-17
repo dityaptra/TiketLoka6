@@ -3,379 +3,296 @@
 import { useEffect, useState, useMemo } from "react";
 import Navbar from "@/src/components/layout/Navbar";
 import Link from "next/link";
-// Menggunakan icon sesuai versi GitHub
-import {
-  Trash2,
-  Calendar,
-  MapPin,
-  Loader2,
-  ShoppingCart,
-  ArrowLeft,
-  Ticket,
-  CheckSquare,
-  Square,
-  Wallet,
-  QrCode,
-  Landmark,
-  ShieldCheck,
-} from "lucide-react";
-import { CartItem } from "@/src/types";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
+import { 
+  Trash2, MapPin, Calendar, Loader2, ShoppingCart, 
+  CheckCircle2, AlertCircle, Tag, ScanLine, Building2 
+} from "lucide-react";
+
+// Import Service, Context, & Utils
 import { useAuth } from "@/src/context/AuthContext";
-import { useCartContext } from "@/src/context/CartContext";
-import { useNotification } from "@/src/context/NotificationContext";
-import toast from "react-hot-toast"; // Menggunakan Toast
+import { useCartContext } from "@/src/context/CartContext"; 
+import { cartService } from "@/src/services/cartService"; // <--- Service Baru
+import { CartItem } from "@/src/types"; // <--- Type Global
+import { formatIDR, getImageUrl, formatDate } from "@/src/lib/utlis"; // Pastikan utils ini ada
 
 export default function CartPage() {
-  const router = useRouter();
   const { token, isLoading: authLoading } = useAuth();
+  const { refreshCart } = useCartContext(); 
+  const router = useRouter();
 
-  // CONTEXT HOOKS
-  const { refreshCart } = useCartContext();
-  const { addNotification } = useNotification();
-
-  const [carts, setCarts] = useState<CartItem[]>([]);
+  // State
+  const [cartItems, setCartItems] = useState<CartItem[]>([]);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]); 
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState("qris"); 
 
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState("qris");
-  const [isCheckingOut, setIsCheckingOut] = useState(false);
-
-  // --- FUNGSI HELPER UNTUK GAMBAR ---
-  const getImageUrl = (url: string | null) => {
-    if (!url)
-      return "https://images.unsplash.com/photo-1596423348633-8472df3b006c?auto=format&fit=crop&w=800";
-    if (url.startsWith("http")) return url;
-    return `http://127.0.0.1:8000/storage/${url}`;
+  // --- 1. FETCH DATA (Pakai Service) ---
+  const loadCartData = async () => {
+    try {
+      const data = await cartService.getCart();
+      setCartItems(data);
+    } catch (error) {
+      console.error(error);
+      // toast.error("Gagal memuat keranjang"); // Optional
+    } finally {
+      setLoading(false);
+    }
   };
-  // ----------------------------------
 
-  // 1. Fetch Data
   useEffect(() => {
     if (authLoading) return;
-
-    const fetchCart = async () => {
-      if (!token) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const res = await fetch("http://127.0.0.1:8000/api/cart", {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        const json = await res.json();
-        if (res.ok) setCarts(json.data);
-        else if (res.status === 401) router.push("/login");
-      } catch (error) {
-        console.error(error);
-        toast.error("Gagal memuat keranjang");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchCart();
-  }, [token, authLoading, router]);
-
-  // Helper untuk Checkbox
-  const toggleSelect = (id: number) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter((item) => item !== id));
+    if (token) {
+      loadCartData();
     } else {
-      setSelectedIds([...selectedIds, id]);
+      setLoading(false);
     }
+  }, [token, authLoading]);
+
+  // --- 2. CALCULATIONS (Memoized) ---
+  const { totalAmount, totalItems } = useMemo(() => {
+    let amount = 0;
+    let count = 0;
+
+    cartItems.forEach((item) => {
+      if (selectedIds.includes(item.id)) {
+        const itemPrice = item.destination.price * item.quantity;
+        
+        let addonsPrice = 0;
+        if (item.addons && item.addons.length > 0) {
+           const singleAddonTotal = item.addons.reduce((sum, ad) => sum + Number(ad.price), 0);
+           addonsPrice = singleAddonTotal * item.quantity; 
+        }
+
+        amount += (itemPrice + addonsPrice);
+        count += item.quantity;
+      }
+    });
+
+    return { totalAmount: amount, totalItems: count };
+  }, [cartItems, selectedIds]);
+
+  // --- 3. HANDLERS ---
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
   };
 
-  const isAllSelected = carts.length > 0 && selectedIds.length === carts.length;
   const toggleSelectAll = () => {
-    if (isAllSelected) {
+    if (selectedIds.length === cartItems.length) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(carts.map((item) => item.id));
+      setSelectedIds(cartItems.map((i) => i.id));
     }
   };
 
-  // 2. Fungsi Hapus Item (Versi GitHub: Pakai confirm & toast)
   const handleDelete = async (id: number) => {
-    if (!confirm("Hapus item ini?")) return; // Native confirm
-
+    if (!confirm("Hapus item ini dari keranjang?")) return;
+    
     try {
-      await fetch(`http://127.0.0.1:8000/api/cart/${id}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      setCarts(carts.filter((item) => item.id !== id));
-      setSelectedIds(selectedIds.filter((selId) => selId !== id));
-
+      // Panggil Service Delete
+      await cartService.deleteItem(id);
+      
       toast.success("Item dihapus");
-      await refreshCart(); // Update badge di navbar
-    } catch (error) {
-      toast.error("Gagal menghapus");
+      setCartItems((prev) => prev.filter((i) => i.id !== id));
+      setSelectedIds((prev) => prev.filter((i) => i !== id));
+      refreshCart(); 
+    } catch (error: any) {
+      toast.error(error.message);
     }
   };
 
-  // 3. Kalkulasi Total
-  const { totalQty, subTotal, grandTotal } = useMemo(() => {
-    const selectedItems = carts.filter((item) => selectedIds.includes(item.id));
-    const totalQty = selectedItems.reduce(
-      (sum, item) => sum + item.quantity,
-      0
-    );
-    const subTotal = selectedItems.reduce(
-      (sum, item) => sum + item.total_price,
-      0
-    );
-    return { totalQty, subTotal, grandTotal: subTotal };
-  }, [carts, selectedIds]);
-
-  // 4. Logic Checkout (Versi GitHub: Update Notification & Redirect to Payment)
   const handleCheckout = async () => {
-    if (selectedIds.length === 0) return toast.error("Pilih minimal 1 item!");
-
-    setIsCheckingOut(true);
+    if (selectedIds.length === 0) return toast.error("Pilih item dulu!");
+    
+    setProcessing(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/checkout", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          cart_ids: selectedIds,
-          payment_method: paymentMethod,
-        }),
+      // Panggil Service Checkout
+      const res = await cartService.checkout({
+        cart_ids: selectedIds,
+        payment_method: paymentMethod
       });
 
-      const json = await res.json();
-
-      if (res.ok) {
-        // Notifikasi Sukses
-        addNotification(
-          "transaction",
-          "Menunggu Pembayaran",
-          `Pesanan dengan kode ${json.booking_code} berhasil dibuat. Segera selesaikan pembayaran.`
-        );
-
-        toast.success("Checkout berhasil!");
-        await refreshCart(); // Refresh badge keranjang
-
-        // --- PENTING: ARAHKAN KE HALAMAN PEMBAYARAN (Versi GitHub) ---
-        router.push(`/payment/${json.booking_code}`);
-      } else {
-        toast.error("Checkout Gagal: " + json.message);
-      }
-    } catch (error) {
-      toast.error("Terjadi kesalahan koneksi");
+      toast.success("Pesanan dibuat!");
+      await refreshCart(); 
+      router.push(`/payment/${res.booking_code}`); // Redirect ke halaman payment
+    } catch (error: any) {
+      toast.error(error.message);
     } finally {
-      setIsCheckingOut(false);
+      setProcessing(false);
     }
   };
+
+  // --- RENDER UI (Sama persis, hanya cleaning sedikit) ---
 
   if (loading || authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-3">
-        <Loader2 className="w-10 h-10 animate-spin text-[#F57C00]" />
+      <div className="min-h-screen flex justify-center items-center bg-gray-50">
+        <Loader2 className="w-10 h-10 animate-spin text-[#0B2F5E]" />
+      </div>
+    );
+  }
+
+  if (!token) {
+    return (
+      <div className="min-h-screen flex flex-col justify-center items-center bg-gray-50 p-4 text-center">
+        <AlertCircle className="w-16 h-16 text-[#F57C00] mb-4" />
+        <h2 className="text-xl font-bold mb-2">Anda belum login</h2>
+        <Link href="/login" className="text-[#0B2F5E] underline font-bold">Login Sekarang</Link>
       </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[#FAFAFA] pb-40">
+    <main className="min-h-screen bg-[#F5F6F8] pb-20 font-sans text-gray-800">
       <Navbar />
+      
+      <div className="max-w-7xl mx-auto px-4 pt-28">
+        <h1 className="text-3xl font-bold text-[#0B2F5E] mb-8 flex items-center gap-3">
+          <ShoppingCart className="w-8 h-8" /> Keranjang Saya
+        </h1>
 
-      <div className="max-w-6xl mx-auto pt-24 px-4 md:px-6">
-        {/* Breadcrumb */}
-        <div className="mb-6">
-          <Link
-            href="/"
-            className="inline-flex items-center text-sm text-gray-500 hover:text-[#F57C00] transition-colors gap-1"
-          >
-            <ArrowLeft className="w-4 h-4" /> Kembali ke Beranda
-          </Link>
-        </div>
-
-        <div className="flex items-center gap-3 mb-8">
-          <div className="p-2 bg-blue-50 rounded-lg">
-            <ShoppingCart className="w-6 h-6 text-[#0B2F5E]" />
-          </div>
-          <h1 className="text-2xl md:text-3xl font-extrabold text-[#0B2F5E]">
-            Keranjang Saya
-          </h1>
-        </div>
-
-        {carts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 bg-white rounded-3xl border border-dashed border-gray-200">
-            <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6">
-              <Ticket className="w-10 h-10 text-gray-300" />
-            </div>
-            <h3 className="text-xl font-bold text-gray-800 mb-2">
-              Keranjang Kosong
-            </h3>
-            <p className="text-gray-500 mb-8 text-center max-w-sm">
-              Belum ada tiket wisata yang ditambahkan.
-            </p>
-            <Link
-              href="/"
-              className="px-8 py-3 bg-[#F57C00] hover:bg-[#E65100] text-white rounded-xl font-bold transition-all flex items-center gap-2"
-            >
-              <ShoppingCart className="w-4 h-4" /> Mulai Belanja
+        {cartItems.length === 0 ? (
+          <div className="bg-white rounded-3xl p-12 text-center shadow-sm border border-gray-100">
+            <Image src="https://placehold.co/400x300?text=Empty+Cart" width={300} height={200} alt="Empty" className="mx-auto mb-6 opacity-50" unoptimized />
+            <h3 className="text-xl font-bold text-gray-400">Keranjang masih kosong</h3>
+            <Link href="/" className="mt-6 inline-block bg-[#F57C00] text-white px-8 py-3 rounded-xl font-bold hover:bg-orange-600 transition shadow-lg">
+              Cari Wisata
             </Link>
           </div>
         ) : (
-          <div className="flex flex-col lg:flex-row gap-8 relative">
-            {/* --- LIST ITEMS --- */}
+          <div className="flex flex-col lg:flex-row gap-8">
+            
+            {/* LEFT COLUMN: ITEM LIST */}
             <div className="flex-1 space-y-4">
-              {/* Select All */}
-              <div className="bg-white p-4 rounded-xl border border-gray-100 flex items-center justify-between shadow-sm sticky top-20 z-10 lg:static">
-                <div
-                  className="flex items-center gap-3 cursor-pointer select-none"
-                  onClick={toggleSelectAll}
-                >
-                  {isAllSelected ? (
-                    <CheckSquare className="w-5 h-5 text-[#F57C00]" />
-                  ) : (
-                    <Square className="w-5 h-5 text-gray-300" />
-                  )}
-                  <span className="font-semibold text-gray-700 text-sm">
-                    Pilih Semua ({carts.length})
-                  </span>
-                </div>
+              <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex items-center gap-3">
+                <input 
+                  type="checkbox" 
+                  checked={selectedIds.length > 0 && selectedIds.length === cartItems.length}
+                  onChange={toggleSelectAll}
+                  className="w-5 h-5 accent-[#0B2F5E] cursor-pointer"
+                />
+                <span className="font-bold text-gray-700">Pilih Semua ({cartItems.length})</span>
               </div>
 
-              {carts.map((item) => (
-                <div
-                  key={item.id}
-                  className={`group bg-white p-4 rounded-2xl border transition-all duration-200 flex gap-4
-                    ${
-                      selectedIds.includes(item.id)
-                        ? "border-[#F57C00] ring-1 ring-[#F57C00]/20"
-                        : "border-gray-100 hover:border-gray-300"
-                    }`}
-                >
-                  <div
-                    className="pt-8 cursor-pointer"
-                    onClick={() => toggleSelect(item.id)}
-                  >
-                    {selectedIds.includes(item.id) ? (
-                      <CheckSquare className="w-5 h-5 text-[#F57C00]" />
-                    ) : (
-                      <Square className="w-5 h-5 text-gray-300 group-hover:text-gray-400" />
-                    )}
-                  </div>
-
-                  <div className="w-24 h-24 sm:w-28 sm:h-28 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-100">
-                    <img
-                      src={getImageUrl(item.destination.image_url)}
-                      alt={item.destination.name}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          "https://images.unsplash.com/photo-1596423348633-8472df3b006c?auto=format&fit=crop&w=800";
-                      }}
-                    />
-                  </div>
-
-                  {/* UI Detail (Mengikuti style Versi GitHub yang lebih simpel) */}
-                  <div className="flex-1">
-                    <div className="flex justify-between items-start">
-                      <h3 className="font-bold text-[#0B2F5E] line-clamp-1">
-                        {item.destination.name}
-                      </h3>
-                      <button
-                        onClick={() => handleDelete(item.id)}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+              {cartItems.map((item) => (
+                <div key={item.id} className={`bg-white p-4 md:p-6 rounded-2xl shadow-sm border transition-all ${selectedIds.includes(item.id) ? 'border-[#0B2F5E] ring-1 ring-[#0B2F5E]/10' : 'border-gray-100'}`}>
+                  <div className="flex gap-4 items-start">
+                    <div className="pt-8">
+                        <input 
+                          type="checkbox" 
+                          checked={selectedIds.includes(item.id)}
+                          onChange={() => toggleSelect(item.id)}
+                          className="w-5 h-5 accent-[#0B2F5E] cursor-pointer"
+                        />
                     </div>
 
-                    <div className="flex flex-col text-xs text-gray-500 mt-2 gap-1.5">
-                      <div className="flex items-center gap-1.5 bg-gray-50 w-fit px-2 py-1 rounded-md border border-gray-100">
-                        <Calendar className="w-3 h-3 text-gray-400" />{" "}
-                        {item.visit_date}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <MapPin className="w-3 h-3 text-gray-400" />{" "}
-                        {item.quantity} Tiket
-                      </div>
+                    <div className="w-24 h-24 md:w-32 md:h-32 bg-gray-100 rounded-xl overflow-hidden shrink-0 relative">
+                        <Image 
+                          src={getImageUrl(item.destination.image_url)} 
+                          alt={item.destination.name} 
+                          fill 
+                          className="object-cover" 
+                          unoptimized
+                        />
                     </div>
-                    <p className="text-[#F57C00] font-bold text-lg mt-2">
-                      Rp {item.total_price.toLocaleString("id-ID")}
-                    </p>
+
+                    <div className="flex-1">
+                        <h3 className="font-bold text-lg text-[#0B2F5E] line-clamp-1">{item.destination.name}</h3>
+                        
+                        <div className="flex flex-wrap gap-3 text-sm text-gray-500 mt-1 mb-3">
+                            <div className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5"/> {formatDate(item.visit_date)}</div>
+                            <div className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5"/> {item.destination.location}</div>
+                        </div>
+
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="text-gray-600 text-sm">Tiket ({item.quantity}x)</span>
+                            <span className="font-medium">{formatIDR(item.destination.price * item.quantity)}</span>
+                        </div>
+
+                        {item.addons && item.addons.length > 0 && (
+                            <div className="bg-orange-50 p-3 rounded-lg border border-orange-100 mb-3">
+                                <p className="text-xs font-bold text-orange-700 mb-1 flex items-center gap-1"><Tag className="w-3 h-3"/> Add-ons:</p>
+                                {item.addons.map((addon, idx) => (
+                                    <div key={idx} className="flex justify-between text-xs text-gray-700 mb-1 last:mb-0">
+                                        <span>+ {addon.name}</span>
+                                        <span className="font-medium text-orange-600">{formatIDR(addon.price * item.quantity)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+                            <p className="font-bold text-[#F57C00] text-lg">
+                                {formatIDR(
+                                    (item.destination.price * item.quantity) + 
+                                    ((item.addons?.reduce((s, a) => s + Number(a.price), 0) || 0) * item.quantity)
+                                )}
+                            </p>
+                            <button 
+                                onClick={() => handleDelete(item.id)}
+                                className="text-red-400 hover:text-red-600 p-2 rounded-lg hover:bg-red-50 transition"
+                            >
+                                <Trash2 className="w-5 h-5"/>
+                            </button>
+                        </div>
+                    </div>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* --- SUMMARY --- */}
-            <div className="hidden lg:block lg:w-96">
-              <div className="bg-white p-6 rounded-2xl shadow-xl shadow-gray-200/50 border border-gray-100 sticky top-28">
-                <h3 className="text-lg font-bold text-[#0B2F5E] mb-6 flex items-center gap-2">
-                  <Wallet className="w-5 h-5 text-[#F57C00]" /> Ringkasan
-                  Belanja
-                </h3>
+            {/* RIGHT COLUMN: SUMMARY */}
+            <div className="lg:w-96 shrink-0">
+                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6 sticky top-28">
+                    <h3 className="font-bold text-xl text-[#0B2F5E] mb-6">Rincian Pembayaran</h3>
+                    
+                    <div className="space-y-3 mb-6">
+                        <div className="flex justify-between text-gray-600">
+                            <span>Total Item</span>
+                            <span className="font-bold">{totalItems} Tiket</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600">
+                            <span>Subtotal</span>
+                            <span className="font-bold">{formatIDR(totalAmount)}</span>
+                        </div>
+                        <div className="border-t border-dashed border-gray-200 my-2"></div>
+                        <div className="flex justify-between items-center text-lg">
+                            <span className="font-bold text-[#0B2F5E]">Total Tagihan</span>
+                            <span className="font-extrabold text-[#F57C00]">{formatIDR(totalAmount)}</span>
+                        </div>
+                    </div>
 
-                <div className="space-y-3 mb-6">
-                  <div className="flex justify-between text-gray-600 text-sm">
-                    <span>Total Item</span>
-                    <span className="font-medium">{totalQty} Tiket</span>
-                  </div>
-                  <div className="flex justify-between text-gray-600 text-sm">
-                    <span>Subtotal</span>
-                    <span className="font-medium">
-                      Rp {subTotal.toLocaleString("id-ID")}
-                    </span>
-                  </div>
-                  <div className="border-t border-dashed border-gray-200 pt-3 flex justify-between items-center">
-                    <span className="font-bold text-gray-800">Total Bayar</span>
-                    <span className="font-bold text-xl text-[#F57C00]">
-                      Rp {grandTotal.toLocaleString("id-ID")}
-                    </span>
-                  </div>
+                    <div className="mb-6">
+                        <label className="text-xs font-bold text-gray-400 uppercase mb-2 block">Metode Pembayaran</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div onClick={() => setPaymentMethod('qris')} className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center gap-2 transition ${paymentMethod === 'qris' ? 'border-[#F57C00] bg-orange-50 text-[#F57C00]' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                <ScanLine className="w-6 h-6"/>
+                                <span className="text-xs font-bold">QRIS</span>
+                            </div>
+                            <div onClick={() => setPaymentMethod('bca')} className={`cursor-pointer border rounded-xl p-3 flex flex-col items-center gap-2 transition ${paymentMethod === 'bca' ? 'border-[#F57C00] bg-orange-50 text-[#F57C00]' : 'border-gray-200 hover:bg-gray-50'}`}>
+                                <Building2 className="w-6 h-6"/>
+                                <span className="text-xs font-bold">BCA</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button 
+                        onClick={handleCheckout}
+                        disabled={processing || selectedIds.length === 0}
+                        className="w-full bg-[#0B2F5E] text-white py-4 rounded-xl font-bold hover:bg-[#09254A] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2 shadow-lg shadow-blue-900/20"
+                    >
+                        {processing ? <Loader2 className="w-5 h-5 animate-spin"/> : <CheckCircle2 className="w-5 h-5"/>}
+                        {processing ? "Memproses..." : "Checkout Sekarang"}
+                    </button>
                 </div>
-
-                <button
-                  onClick={handleCheckout}
-                  disabled={selectedIds.length === 0 || isCheckingOut}
-                  className="w-full bg-[#0B2F5E] hover:bg-[#061A35] text-white font-bold py-3.5 rounded-xl disabled:opacity-50 flex justify-center items-center gap-2 shadow-lg shadow-blue-900/10 active:scale-[0.98] transition-all"
-                >
-                  {isCheckingOut ? (
-                    <Loader2 className="animate-spin w-5 h-5" />
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-5 h-5" /> Bayar Sekarang
-                    </>
-                  )}
-                </button>
-              </div>
             </div>
 
-            {/* Mobile Sticky Bar */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 lg:hidden z-50">
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <p className="text-xs text-gray-500">Total Bayar</p>
-                  <p className="font-bold text-lg text-[#F57C00]">
-                    Rp {grandTotal.toLocaleString("id-ID")}
-                  </p>
-                </div>
-                <button
-                  onClick={handleCheckout}
-                  disabled={selectedIds.length === 0 || isCheckingOut}
-                  className="flex-1 bg-[#0B2F5E] text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2 disabled:bg-gray-300"
-                >
-                  {isCheckingOut ? (
-                    <Loader2 className="animate-spin w-5 h-5" />
-                  ) : (
-                    "Checkout"
-                  )}
-                </button>
-              </div>
-            </div>
           </div>
         )}
       </div>
